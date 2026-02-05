@@ -1,0 +1,108 @@
+# greport Configuration File
+# Copy this file to ~/.config/greport/config.toml and customize as needed
+# Or specify a custom path with: greport -c /path/to/config.toml
+
+# =============================================================================
+# GitHub Configuration
+# =============================================================================
+[github]
+# GitHub personal access token (PAT)
+# Can also be set via GITHUB_TOKEN environment variable (recommended for security)
+# Required scopes: repo (for private repos), public_repo (for public only)
+# token = "ghp_your_token_here"
+
+# GitHub API base URL (optional)
+# Only needed for GitHub Enterprise Server installations
+# base_url = "https://github.mycompany.com/api/v3"
+
+# =============================================================================
+# Default Settings
+# =============================================================================
+[defaults]
+# Default repository to use when -r/--repo is not specified
+# Format: owner/repo
+# repo = "myorg/myrepo"
+
+# Default output format
+# Options: table, json, csv, markdown
+format = "table"
+
+# Cache TTL in seconds (default: 3600 = 1 hour)
+# Set to 0 to disable caching
+cache_ttl = 3600
+
+# =============================================================================
+# SLA (Service Level Agreement) Configuration
+# =============================================================================
+[sla]
+# Default response time SLA in hours
+# This is the target time for first response to an issue
+response_time_hours = 24
+
+# Default resolution time SLA in hours
+# This is the target time for closing/resolving an issue
+resolution_time_hours = 168  # 7 days
+
+# -----------------------------------------------------------------------------
+# Priority-specific SLA overrides
+# Define custom SLAs based on issue labels
+# The label name is case-insensitive and matches if the label contains the key
+# -----------------------------------------------------------------------------
+
+# Critical priority issues
+[sla.priority.critical]
+response_time_hours = 4
+resolution_time_hours = 24
+
+# High priority issues
+[sla.priority.high]
+response_time_hours = 8
+resolution_time_hours = 72  # 3 days
+
+# Medium priority issues (optional - falls back to default if not specified)
+[sla.priority.medium]
+response_time_hours = 24
+resolution_time_hours = 168  # 7 days
+
+# Low priority issues
+[sla.priority.low]
+response_time_hours = 48
+resolution_time_hours = 336  # 14 days
+
+# =============================================================================
+# Example Configurations for Different Use Cases
+# =============================================================================
+
+# --- Startup/Small Team ---
+# Uncomment and modify for a small team with relaxed SLAs
+# [sla]
+# response_time_hours = 48
+# resolution_time_hours = 336  # 14 days
+#
+# [sla.priority.critical]
+# response_time_hours = 8
+# resolution_time_hours = 48
+
+# --- Enterprise/Large Team ---
+# Uncomment and modify for enterprise with strict SLAs
+# [sla]
+# response_time_hours = 8
+# resolution_time_hours = 72
+#
+# [sla.priority.critical]
+# response_time_hours = 1
+# resolution_time_hours = 8
+#
+# [sla.priority.high]
+# response_time_hours = 4
+# resolution_time_hours = 24
+
+# --- Open Source Project ---
+# Uncomment and modify for open source with community-based timelines
+# [sla]
+# response_time_hours = 72
+# resolution_time_hours = 720  # 30 days
+#
+# [sla.priority.critical]
+# response_time_hours = 24
+# resolution_time_hours = 168  # 7 days

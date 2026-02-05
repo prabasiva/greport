@@ -1,0 +1,47 @@
+[package]
+name = "greport-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Core library for greport - GitHub reporting and analytics"
+
+[features]
+default = []
+mock = []
+
+[dependencies]
+# Async
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# GitHub API
+octocrab = { workspace = true }
+
+# Date/Time
+chrono = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Configuration
+config = { workspace = true }
+
+# Home directory
+dirs = "5.0"
+
+# TOML parsing
+toml = "0.8"
+
+[dev-dependencies]
+mockall = { workspace = true }
+wiremock = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

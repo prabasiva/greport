@@ -1,0 +1,75 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/greport-core",
+    "crates/greport-cli",
+    "crates/greport-api",
+    "crates/greport-db",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["greport contributors"]
+license = "MIT"
+repository = "https://github.com/owner/greport"
+rust-version = "1.87"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.43", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+
+# GitHub API
+octocrab = "0.41"
+
+# Web framework
+axum = { version = "0.8", features = ["macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono", "uuid"] }
+
+# CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Date/Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Configuration
+config = "0.14"
+dotenvy = "0.15"
+
+# Async traits
+async-trait = "0.1"
+
+# UUID
+uuid = { version = "1.11", features = ["v4", "serde"] }
+
+# Testing
+mockall = "0.13"
+wiremock = "0.6"
+
+# Workspace crates
+greport-core = { path = "crates/greport-core" }
+greport-db = { path = "crates/greport-db" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
