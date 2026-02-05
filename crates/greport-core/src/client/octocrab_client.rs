@@ -549,7 +549,7 @@ impl GitHubClient for OctocrabClient {
         Ok(RateLimitInfo {
             remaining: rate_limit.resources.core.remaining as u32,
             limit: rate_limit.resources.core.limit as u32,
-            reset: rate_limit.resources.core.reset as u64,
+            reset: rate_limit.resources.core.reset,
         })
     }
 }
