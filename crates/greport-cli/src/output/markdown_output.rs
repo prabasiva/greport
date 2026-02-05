@@ -89,8 +89,16 @@ pub fn format_velocity(velocity: &VelocityMetrics) -> anyhow::Result<()> {
     }
 
     println!("\n**Averages:**");
-    println!("- Opened per {}: {:.1}", velocity.period.label(), velocity.avg_opened);
-    println!("- Closed per {}: {:.1}", velocity.period.label(), velocity.avg_closed);
+    println!(
+        "- Opened per {}: {:.1}",
+        velocity.period.label(),
+        velocity.avg_opened
+    );
+    println!(
+        "- Closed per {}: {:.1}",
+        velocity.period.label(),
+        velocity.avg_closed
+    );
 
     Ok(())
 }
@@ -98,14 +106,20 @@ pub fn format_velocity(velocity: &VelocityMetrics) -> anyhow::Result<()> {
 pub fn format_burndown(burndown: &BurndownReport) -> anyhow::Result<()> {
     println!("# Burndown: {}\n", burndown.milestone);
     println!("- **Total Issues:** {}", burndown.total_issues);
-    println!("- **Start Date:** {}", burndown.start_date.format("%Y-%m-%d"));
+    println!(
+        "- **Start Date:** {}",
+        burndown.start_date.format("%Y-%m-%d")
+    );
 
     if let Some(end) = burndown.end_date {
         println!("- **Due Date:** {}", end.format("%Y-%m-%d"));
     }
 
     if let Some(projected) = burndown.projected_completion {
-        println!("- **Projected Completion:** {}", projected.format("%Y-%m-%d"));
+        println!(
+            "- **Projected Completion:** {}",
+            projected.format("%Y-%m-%d")
+        );
     }
 
     if let Some(last) = burndown.data_points.last() {
@@ -114,7 +128,10 @@ pub fn format_burndown(burndown: &BurndownReport) -> anyhow::Result<()> {
         } else {
             0
         };
-        println!("\n**Progress:** {}% ({}/{})", pct, last.completed, burndown.total_issues);
+        println!(
+            "\n**Progress:** {}% ({}/{})",
+            pct, last.completed, burndown.total_issues
+        );
     }
 
     Ok(())
@@ -247,7 +264,10 @@ pub fn format_milestone_progress(milestone: &Milestone) -> anyhow::Result<()> {
     let pct = milestone.completion_percent();
 
     println!("- **State:** {:?}", milestone.state);
-    println!("- **Progress:** {:.1}% ({}/{})", pct, milestone.closed_issues, total);
+    println!(
+        "- **Progress:** {:.1}% ({}/{})",
+        pct, milestone.closed_issues, total
+    );
     println!("- **Open Issues:** {}", milestone.open_issues);
     println!("- **Closed Issues:** {}", milestone.closed_issues);
 

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Main configuration structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     /// GitHub configuration
     #[serde(default)]
@@ -69,16 +69,6 @@ pub struct SlaPriority {
 
     /// Resolution time in hours
     pub resolution_time_hours: i64,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            github: GitHubConfig::default(),
-            defaults: DefaultsConfig::default(),
-            sla: SlaConfig::default(),
-        }
-    }
 }
 
 impl Default for SlaConfig {

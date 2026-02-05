@@ -10,7 +10,9 @@ use crate::error::ApiError;
 use crate::response::{ApiResponse, PaginatedResponse};
 use crate::state::AppState;
 use greport_core::client::{GitHubClient, IssueParams, IssueStateFilter, RepoId};
-use greport_core::metrics::{IssueMetrics, IssueMetricsCalculator, VelocityCalculator, VelocityMetrics, Period};
+use greport_core::metrics::{
+    IssueMetrics, IssueMetricsCalculator, Period, VelocityCalculator, VelocityMetrics,
+};
 use greport_core::models::Issue;
 use greport_core::reports::{BurndownCalculator, BurndownReport};
 
@@ -40,7 +42,9 @@ pub async fn list_issues(
 
     let params = IssueParams {
         state: issue_state,
-        labels: query.labels.map(|l| l.split(',').map(String::from).collect()),
+        labels: query
+            .labels
+            .map(|l| l.split(',').map(String::from).collect()),
         assignee: query.assignee,
         milestone: query.milestone,
         per_page: query.per_page.unwrap_or(30).min(100) as usize,
@@ -63,7 +67,10 @@ pub async fn get_metrics(
     Path((owner, repo)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<IssueMetrics>>, ApiError> {
     let repo_id = RepoId::new(owner, repo);
-    let issues = state.github.list_issues(&repo_id, IssueParams::all()).await?;
+    let issues = state
+        .github
+        .list_issues(&repo_id, IssueParams::all())
+        .await?;
 
     let calculator = IssueMetricsCalculator::new(30);
     let metrics = calculator.calculate(&issues);
@@ -83,7 +90,10 @@ pub async fn get_velocity(
     Query(query): Query<VelocityQuery>,
 ) -> Result<Json<ApiResponse<VelocityMetrics>>, ApiError> {
     let repo_id = RepoId::new(owner, repo);
-    let issues = state.github.list_issues(&repo_id, IssueParams::all()).await?;
+    let issues = state
+        .github
+        .list_issues(&repo_id, IssueParams::all())
+        .await?;
 
     let period = match query.period.as_deref() {
         Some("day") => Period::Day,
@@ -114,7 +124,10 @@ pub async fn get_burndown(
         .find(|m| m.title.eq_ignore_ascii_case(&query.milestone))
         .ok_or_else(|| ApiError::NotFound(format!("Milestone not found: {}", query.milestone)))?;
 
-    let issues = state.github.list_issues(&repo_id, IssueParams::all()).await?;
+    let issues = state
+        .github
+        .list_issues(&repo_id, IssueParams::all())
+        .await?;
     let burndown = BurndownCalculator::calculate(&issues, ms);
 
     Ok(Json(ApiResponse::ok(burndown)))
@@ -133,7 +146,10 @@ pub async fn get_stale(
     let repo_id = RepoId::new(owner, repo);
     let days = query.days.unwrap_or(30);
 
-    let issues = state.github.list_issues(&repo_id, IssueParams::open()).await?;
+    let issues = state
+        .github
+        .list_issues(&repo_id, IssueParams::open())
+        .await?;
     let stale: Vec<_> = issues.into_iter().filter(|i| i.is_stale(days)).collect();
 
     Ok(Json(ApiResponse::ok(stale)))

@@ -99,12 +99,7 @@ impl ReleaseNotesGenerator {
     }
 
     /// Generate release notes from issues and PRs
-    pub fn generate(
-        &self,
-        version: &str,
-        issues: &[Issue],
-        prs: &[PullRequest],
-    ) -> ReleaseNotes {
+    pub fn generate(&self, version: &str, issues: &[Issue], prs: &[PullRequest]) -> ReleaseNotes {
         let mut sections: HashMap<String, Vec<ReleaseItem>> = HashMap::new();
         let mut contributors: Vec<String> = Vec::new();
 
@@ -295,7 +290,12 @@ mod tests {
 
         let issues = vec![
             create_test_issue(1, "Fix login bug", "alice", vec![create_test_label("bug")]),
-            create_test_issue(2, "Add dark mode", "bob", vec![create_test_label("feature")]),
+            create_test_issue(
+                2,
+                "Add dark mode",
+                "bob",
+                vec![create_test_label("feature")],
+            ),
         ];
         let prs = vec![create_test_pr(10, "charlie")];
 
@@ -312,9 +312,24 @@ mod tests {
         let generator = ReleaseNotesGenerator::with_defaults();
 
         let issues = vec![
-            create_test_issue(1, "Fix critical bug", "alice", vec![create_test_label("bug")]),
-            create_test_issue(2, "Add new feature", "bob", vec![create_test_label("enhancement")]),
-            create_test_issue(3, "Security fix", "charlie", vec![create_test_label("security")]),
+            create_test_issue(
+                1,
+                "Fix critical bug",
+                "alice",
+                vec![create_test_label("bug")],
+            ),
+            create_test_issue(
+                2,
+                "Add new feature",
+                "bob",
+                vec![create_test_label("enhancement")],
+            ),
+            create_test_issue(
+                3,
+                "Security fix",
+                "charlie",
+                vec![create_test_label("security")],
+            ),
             create_test_issue(4, "Uncategorized item", "dave", vec![]),
         ];
 
@@ -334,8 +349,18 @@ mod tests {
 
         let issues = vec![
             create_test_issue(1, "Bug fix", "alice", vec![create_test_label("bug")]),
-            create_test_issue(2, "Security fix", "bob", vec![create_test_label("security")]),
-            create_test_issue(3, "Breaking change", "charlie", vec![create_test_label("breaking")]),
+            create_test_issue(
+                2,
+                "Security fix",
+                "bob",
+                vec![create_test_label("security")],
+            ),
+            create_test_issue(
+                3,
+                "Breaking change",
+                "charlie",
+                vec![create_test_label("breaking")],
+            ),
         ];
 
         let notes = generator.generate("v1.0.0", &issues, &[]);
@@ -381,9 +406,12 @@ mod tests {
     fn test_release_notes_to_markdown() {
         let generator = ReleaseNotesGenerator::with_defaults();
 
-        let issues = vec![
-            create_test_issue(1, "Fix login bug", "alice", vec![create_test_label("bug")]),
-        ];
+        let issues = vec![create_test_issue(
+            1,
+            "Fix login bug",
+            "alice",
+            vec![create_test_label("bug")],
+        )];
 
         let notes = generator.generate("v1.0.0", &issues, &[]);
         let markdown = generator.to_markdown(&notes);
@@ -416,7 +444,12 @@ mod tests {
         // Labels that contain the keywords should match
         let issues = vec![
             create_test_issue(1, "Fix", "alice", vec![create_test_label("type:bug")]),
-            create_test_issue(2, "Doc", "bob", vec![create_test_label("documentation-update")]),
+            create_test_issue(
+                2,
+                "Doc",
+                "bob",
+                vec![create_test_label("documentation-update")],
+            ),
         ];
 
         let notes = generator.generate("v1.0.0", &issues, &[]);
@@ -437,16 +470,28 @@ mod tests {
         };
         let generator = ReleaseNotesGenerator::new(config);
 
-        let issues = vec![
-            create_test_issue(1, "Custom bug fix", "alice", vec![create_test_label("custom-bug")]),
-        ];
+        let issues = vec![create_test_issue(
+            1,
+            "Custom bug fix",
+            "alice",
+            vec![create_test_label("custom-bug")],
+        )];
 
         let notes = generator.generate("v1.0.0", &issues, &[]);
         let section_titles: Vec<_> = notes.sections.iter().map(|s| s.title.as_str()).collect();
 
         // "custom-bug" maps to "Bug Fixes" which is in the predefined section order
         assert!(section_titles.contains(&"Bug Fixes"));
-        assert_eq!(notes.sections.iter().find(|s| s.title == "Bug Fixes").unwrap().items.len(), 1);
+        assert_eq!(
+            notes
+                .sections
+                .iter()
+                .find(|s| s.title == "Bug Fixes")
+                .unwrap()
+                .items
+                .len(),
+            1
+        );
     }
 
     #[test]

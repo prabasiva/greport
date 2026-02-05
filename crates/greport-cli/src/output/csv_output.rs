@@ -7,7 +7,15 @@ use std::io;
 
 pub fn format_issues(issues: &[Issue]) -> anyhow::Result<()> {
     let mut wtr = csv::Writer::from_writer(io::stdout());
-    wtr.write_record(["number", "title", "state", "labels", "assignees", "age_days", "created_at"])?;
+    wtr.write_record([
+        "number",
+        "title",
+        "state",
+        "labels",
+        "assignees",
+        "age_days",
+        "created_at",
+    ])?;
 
     for issue in issues {
         let labels = issue.label_names().join(";");
@@ -50,7 +58,13 @@ pub fn format_issue_metrics(metrics: &IssueMetrics) -> anyhow::Result<()> {
 
 pub fn format_velocity(velocity: &VelocityMetrics) -> anyhow::Result<()> {
     let mut wtr = csv::Writer::from_writer(io::stdout());
-    wtr.write_record(["period_start", "opened", "closed", "net_change", "cumulative_open"])?;
+    wtr.write_record([
+        "period_start",
+        "opened",
+        "closed",
+        "net_change",
+        "cumulative_open",
+    ])?;
 
     for dp in &velocity.data_points {
         wtr.write_record([
@@ -84,7 +98,13 @@ pub fn format_burndown(burndown: &BurndownReport) -> anyhow::Result<()> {
 
 pub fn format_sla(sla: &SlaReport) -> anyhow::Result<()> {
     let mut wtr = csv::Writer::from_writer(io::stdout());
-    wtr.write_record(["issue_number", "title", "violation_type", "sla_hours", "actual_hours"])?;
+    wtr.write_record([
+        "issue_number",
+        "title",
+        "violation_type",
+        "sla_hours",
+        "actual_hours",
+    ])?;
 
     for v in &sla.violations {
         wtr.write_record([
@@ -102,7 +122,15 @@ pub fn format_sla(sla: &SlaReport) -> anyhow::Result<()> {
 
 pub fn format_pulls(prs: &[PullRequest]) -> anyhow::Result<()> {
     let mut wtr = csv::Writer::from_writer(io::stdout());
-    wtr.write_record(["number", "title", "state", "author", "merged", "additions", "deletions"])?;
+    wtr.write_record([
+        "number",
+        "title",
+        "state",
+        "author",
+        "merged",
+        "additions",
+        "deletions",
+    ])?;
 
     for pr in prs {
         let state = match pr.state {
@@ -151,9 +179,7 @@ pub fn format_releases(releases: &[Release]) -> anyhow::Result<()> {
             r.name.as_deref().unwrap_or(""),
             &r.draft.to_string(),
             &r.prerelease.to_string(),
-            &r.published_at
-                .map(|d| d.to_rfc3339())
-                .unwrap_or_default(),
+            &r.published_at.map(|d| d.to_rfc3339()).unwrap_or_default(),
         ])?;
     }
 

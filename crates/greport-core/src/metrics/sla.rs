@@ -64,11 +64,7 @@ impl SlaCalculator {
     }
 
     /// Calculate SLA compliance for issues
-    pub fn calculate(
-        &self,
-        issues: &[Issue],
-        events: &HashMap<u64, Vec<IssueEvent>>,
-    ) -> SlaReport {
+    pub fn calculate(&self, issues: &[Issue], events: &HashMap<u64, Vec<IssueEvent>>) -> SlaReport {
         let mut response_met = 0;
         let mut response_breached = 0;
         let mut resolution_met = 0;
@@ -179,14 +175,23 @@ mod tests {
         }
     }
 
-    fn create_test_issue(number: u64, created_hours_ago: i64, closed_hours_ago: Option<i64>, labels: Vec<Label>) -> Issue {
+    fn create_test_issue(
+        number: u64,
+        created_hours_ago: i64,
+        closed_hours_ago: Option<i64>,
+        labels: Vec<Label>,
+    ) -> Issue {
         let now = Utc::now();
         Issue {
             id: number as i64,
             number,
             title: format!("Issue #{}", number),
             body: None,
-            state: if closed_hours_ago.is_some() { IssueState::Closed } else { IssueState::Open },
+            state: if closed_hours_ago.is_some() {
+                IssueState::Closed
+            } else {
+                IssueState::Open
+            },
             labels,
             assignees: vec![],
             milestone: None,
@@ -290,7 +295,10 @@ mod tests {
         assert_eq!(report.resolution_sla_met, 0);
         assert_eq!(report.resolution_sla_breached, 1);
         assert_eq!(report.violations.len(), 1);
-        assert_eq!(report.violations[0].violation_type, ViolationType::Resolution);
+        assert_eq!(
+            report.violations[0].violation_type,
+            ViolationType::Resolution
+        );
     }
 
     #[test]
@@ -335,9 +343,9 @@ mod tests {
 
         // 2 issues closed within SLA, 1 breached
         let issues = vec![
-            create_test_issue(1, 100, Some(4), vec![]),   // Within SLA (96h)
-            create_test_issue(2, 120, Some(10), vec![]),  // Within SLA (110h)
-            create_test_issue(3, 200, Some(5), vec![]),   // Breached (195h)
+            create_test_issue(1, 100, Some(4), vec![]), // Within SLA (96h)
+            create_test_issue(2, 120, Some(10), vec![]), // Within SLA (110h)
+            create_test_issue(3, 200, Some(5), vec![]), // Breached (195h)
         ];
         let events: HashMap<u64, Vec<IssueEvent>> = HashMap::new();
 

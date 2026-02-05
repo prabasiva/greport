@@ -13,7 +13,10 @@
 
 # GitHub API base URL (optional)
 # Only needed for GitHub Enterprise Server installations
-# base_url = "https://github.mycompany.com/api/v3"
+# Can also be set via GITHUB_BASE_URL environment variable
+# Examples:
+#   base_url = "https://github.mycompany.com/api/v3"
+#   base_url = "https://git.internal.corp/api/v3"
 
 # =============================================================================
 # Default Settings

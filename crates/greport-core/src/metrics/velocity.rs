@@ -116,7 +116,10 @@ impl VelocityCalculator {
         let mut data_points = Vec::with_capacity(num_periods);
 
         // Calculate current open count
-        let current_open = issues.iter().filter(|i| i.state == IssueState::Open).count();
+        let current_open = issues
+            .iter()
+            .filter(|i| i.state == IssueState::Open)
+            .count();
 
         // Work backwards from now
         let mut cumulative_open = current_open;
@@ -127,9 +130,7 @@ impl VelocityCalculator {
 
             let opened = issues
                 .iter()
-                .filter(|issue| {
-                    issue.created_at >= period_start && issue.created_at < period_end
-                })
+                .filter(|issue| issue.created_at >= period_start && issue.created_at < period_end)
                 .count();
 
             let closed = issues

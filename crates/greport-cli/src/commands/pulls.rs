@@ -14,7 +14,11 @@ pub async fn handle_pulls(
     let formatter = Formatter::new(format);
 
     match command {
-        PrsCommands::List { state, author, limit } => {
+        PrsCommands::List {
+            state,
+            author,
+            limit,
+        } => {
             let params = PullParams {
                 state: state.into(),
                 per_page: limit.min(100),

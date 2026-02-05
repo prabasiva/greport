@@ -44,5 +44,10 @@ dotenvy = { workspace = true }
 # UUID
 uuid = { workspace = true }
 
+# Crypto (for API key hashing)
+sha2 = "0.10"
+hex = "0.4"
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+axum-test = "18"

@@ -51,7 +51,9 @@ pub async fn handle_issues(
 
         IssuesCommands::Count { group_by, state } => {
             let params = IssueParams {
-                state: state.map(Into::into).unwrap_or(greport_core::client::IssueStateFilter::All),
+                state: state
+                    .map(Into::into)
+                    .unwrap_or(greport_core::client::IssueStateFilter::All),
                 ..Default::default()
             };
 
@@ -111,7 +113,11 @@ pub async fn handle_issues(
             let issues = client.list_issues(repo, IssueParams::open()).await?;
             let stale: Vec<_> = issues.into_iter().filter(|i| i.is_stale(days)).collect();
 
-            println!("Found {} stale issues (no activity in {} days):\n", stale.len(), days);
+            println!(
+                "Found {} stale issues (no activity in {} days):\n",
+                stale.len(),
+                days
+            );
             formatter.format_issues(&stale)?;
         }
 
@@ -137,7 +143,8 @@ pub async fn handle_issues(
             let issues = client.list_issues(repo, IssueParams::all()).await?;
 
             // Get events for each issue (simplified - would need batching for large repos)
-            let mut events_map: HashMap<u64, Vec<greport_core::models::IssueEvent>> = HashMap::new();
+            let mut events_map: HashMap<u64, Vec<greport_core::models::IssueEvent>> =
+                HashMap::new();
             for issue in issues.iter().take(50) {
                 if let Ok(events) = client.list_issue_events(repo, issue.number).await {
                     events_map.insert(issue.number, events);

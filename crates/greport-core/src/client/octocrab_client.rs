@@ -1,6 +1,8 @@
 //! Octocrab-based GitHub client implementation
 
-use super::{GitHubClient, IssueParams, IssueStateFilter, PullParams, PullStateFilter, RateLimitInfo, RepoId};
+use super::{
+    GitHubClient, IssueParams, IssueStateFilter, PullParams, PullStateFilter, RateLimitInfo, RepoId,
+};
 use crate::models::{
     Issue, IssueEvent, IssueState, Label, Milestone, MilestoneState, PullRequest, PullState,
     Release, Repository, Review, User,
@@ -16,20 +18,71 @@ pub struct OctocrabClient {
 }
 
 impl OctocrabClient {
-    /// Create a new client with the given token
-    pub fn new(token: &str) -> Result<Self> {
-        let client = Octocrab::builder()
-            .personal_token(token.to_string())
+    /// Create a new client with the given token and optional base URL
+    ///
+    /// # Arguments
+    /// * `token` - GitHub personal access token
+    /// * `base_url` - Optional base URL for GitHub Enterprise (e.g., `https://github.mycompany.com/api/v3`)
+    pub fn new(token: &str, base_url: Option<&str>) -> Result<Self> {
+        let mut builder = Octocrab::builder().personal_token(token.to_string());
+
+        // Log token type (without exposing the actual token)
+        let token_type = if token.starts_with("ghp_") {
+            "classic PAT"
+        } else if token.starts_with("github_pat_") {
+            "fine-grained PAT"
+        } else if token.starts_with("gho_") {
+            "OAuth token"
+        } else {
+            "unknown token type"
+        };
+        debug!(token_type = token_type, "Creating GitHub client");
+
+        if let Some(url) = base_url {
+            debug!(base_url = url, "Using GitHub Enterprise base URL");
+            builder = builder
+                .base_uri(url)
+                .map_err(|e| Error::Custom(format!("Invalid base URL '{}': {}", url, e)))?;
+        } else {
+            debug!("Using default GitHub.com API (https://api.github.com)");
+        }
+
+        let client = builder
             .build()
             .map_err(|e| Error::Custom(format!("Failed to create GitHub client: {}", e)))?;
 
+        debug!("GitHub client created successfully");
         Ok(Self { client })
     }
 
-    /// Create a client from the GITHUB_TOKEN environment variable
+    /// Create a client with only a token (uses default GitHub.com API)
+    pub fn with_token(token: &str) -> Result<Self> {
+        Self::new(token, None)
+    }
+
+    /// Create a client from environment variables
+    ///
+    /// Reads:
+    /// * `GITHUB_TOKEN` - Required: GitHub personal access token
+    /// * `GITHUB_BASE_URL` - Optional: Base URL for GitHub Enterprise
     pub fn from_env() -> Result<Self> {
+        debug!("Creating GitHub client from environment variables");
         let token = std::env::var("GITHUB_TOKEN").map_err(|_| Error::MissingToken)?;
-        Self::new(&token)
+        debug!("GITHUB_TOKEN found in environment");
+
+        let base_url = std::env::var("GITHUB_BASE_URL").ok();
+        if base_url.is_some() {
+            debug!("GITHUB_BASE_URL found in environment");
+        }
+
+        Self::new(&token, base_url.as_deref())
+    }
+
+    /// Create a client from a Config object
+    pub fn from_config(config: &crate::config::Config) -> Result<Self> {
+        debug!("Creating GitHub client from config");
+        let token = config.github_token()?;
+        Self::new(&token, config.github.base_url.as_deref())
     }
 
     /// Convert octocrab issue to our Issue model
@@ -61,7 +114,7 @@ impl OctocrabClient {
                 .collect(),
             milestone: issue.milestone.map(Self::convert_milestone),
             author: Self::convert_user(issue.user),
-            comments_count: issue.comments as u32,
+            comments_count: issue.comments,
             created_at: issue.created_at,
             updated_at: issue.updated_at,
             closed_at: issue.closed_at,
@@ -106,11 +159,7 @@ impl GitHubClient for OctocrabClient {
     async fn get_repository(&self, repo: &RepoId) -> Result<Repository> {
         debug!("Fetching repository info");
 
-        let r = self
-            .client
-            .repos(&repo.owner, &repo.name)
-            .get()
-            .await?;
+        let r = self.client.repos(&repo.owner, &repo.name).get().await?;
 
         Ok(Repository {
             id: r.id.0 as i64,
@@ -257,11 +306,12 @@ impl GitHubClient for OctocrabClient {
 
     async fn list_milestones(&self, repo: &RepoId) -> Result<Vec<Milestone>> {
         // Use the REST API directly for milestones
-        let route = format!("/repos/{}/{}/milestones?state=all&per_page=100", repo.owner, repo.name);
-        let milestones: Vec<octocrab::models::Milestone> = self
-            .client
-            .get(&route, None::<&()>)
-            .await?;
+        let route = format!(
+            "/repos/{}/{}/milestones?state=all&per_page=100",
+            repo.owner, repo.name
+        );
+        let milestones: Vec<octocrab::models::Milestone> =
+            self.client.get(&route, None::<&()>).await?;
 
         Ok(milestones
             .into_iter()
@@ -292,7 +342,11 @@ impl GitHubClient for OctocrabClient {
             .items
             .into_iter()
             .map(|pr| {
-                let is_open = pr.state.as_ref().map(|s| format!("{:?}", s).to_lowercase().contains("open")).unwrap_or(false);
+                let is_open = pr
+                    .state
+                    .as_ref()
+                    .map(|s| format!("{:?}", s).to_lowercase().contains("open"))
+                    .unwrap_or(false);
                 PullRequest {
                     id: pr.id.0 as i64,
                     number: pr.number,
@@ -304,12 +358,15 @@ impl GitHubClient for OctocrabClient {
                         PullState::Closed
                     },
                     draft: pr.draft.unwrap_or(false),
-                    author: pr.user.map(|u| Self::convert_user(*u)).unwrap_or_else(|| User {
-                        id: 0,
-                        login: "unknown".to_string(),
-                        avatar_url: String::new(),
-                        html_url: String::new(),
-                    }),
+                    author: pr
+                        .user
+                        .map(|u| Self::convert_user(*u))
+                        .unwrap_or_else(|| User {
+                            id: 0,
+                            login: "unknown".to_string(),
+                            avatar_url: String::new(),
+                            html_url: String::new(),
+                        }),
                     labels: pr
                         .labels
                         .unwrap_or_default()
@@ -326,9 +383,9 @@ impl GitHubClient for OctocrabClient {
                     base_ref: pr.base.ref_field,
                     merged: pr.merged_at.is_some(),
                     merged_at: pr.merged_at,
-                    additions: 0,  // Would need additional API call
-                    deletions: 0,  // Would need additional API call
-                    changed_files: 0,  // Would need additional API call
+                    additions: 0,     // Would need additional API call
+                    deletions: 0,     // Would need additional API call
+                    changed_files: 0, // Would need additional API call
                     created_at: pr.created_at.unwrap_or_else(chrono::Utc::now),
                     updated_at: pr.updated_at.unwrap_or_else(chrono::Utc::now),
                     closed_at: pr.closed_at,
@@ -346,7 +403,11 @@ impl GitHubClient for OctocrabClient {
             .get(number)
             .await?;
 
-        let is_open = pr.state.as_ref().map(|s| format!("{:?}", s).to_lowercase().contains("open")).unwrap_or(false);
+        let is_open = pr
+            .state
+            .as_ref()
+            .map(|s| format!("{:?}", s).to_lowercase().contains("open"))
+            .unwrap_or(false);
         Ok(PullRequest {
             id: pr.id.0 as i64,
             number: pr.number,
@@ -358,12 +419,15 @@ impl GitHubClient for OctocrabClient {
                 PullState::Closed
             },
             draft: pr.draft.unwrap_or(false),
-            author: pr.user.map(|u| Self::convert_user(*u)).unwrap_or_else(|| User {
-                id: 0,
-                login: "unknown".to_string(),
-                avatar_url: String::new(),
-                html_url: String::new(),
-            }),
+            author: pr
+                .user
+                .map(|u| Self::convert_user(*u))
+                .unwrap_or_else(|| User {
+                    id: 0,
+                    login: "unknown".to_string(),
+                    avatar_url: String::new(),
+                    html_url: String::new(),
+                }),
             labels: pr
                 .labels
                 .unwrap_or_default()

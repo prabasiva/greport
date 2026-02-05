@@ -49,6 +49,9 @@ pub fn create_default_config(force: bool) -> anyhow::Result<PathBuf> {
 # GitHub personal access token (can also use GITHUB_TOKEN env var)
 # token = "ghp_xxxx"
 
+# GitHub Enterprise base URL (optional, for GitHub Enterprise Server)
+# base_url = "https://github.mycompany.com/api/v3"
+
 [defaults]
 # Default repository (owner/repo)
 # repo = "owner/repo"
