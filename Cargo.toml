@@ -13,7 +13,7 @@ edition = "2021"
 authors = ["greport contributors"]
 license = "MIT"
 repository = "https://github.com/owner/greport"
-rust-version = "1.87"
+rust-version = "1.88"
 
 [workspace.dependencies]
 # Async runtime
