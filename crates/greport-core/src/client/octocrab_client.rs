@@ -11,7 +11,84 @@ use crate::models::{
 use crate::{Error, Result};
 use async_trait::async_trait;
 use octocrab::Octocrab;
-use tracing::{debug, instrument};
+use tracing::{debug, error, info, instrument, warn};
+
+/// Log detailed error information for debugging
+fn log_api_error(operation: &str, endpoint: &str, err: &octocrab::Error) {
+    error!(
+        operation = operation,
+        endpoint = endpoint,
+        "GitHub API request failed"
+    );
+
+    match err {
+        octocrab::Error::GitHub { source, backtrace: _ } => {
+            error!(
+                status_code = %source.status_code,
+                message = %source.message,
+                documentation_url = source.documentation_url.as_deref().unwrap_or("none"),
+                "GitHub API error response"
+            );
+            if let Some(errors) = &source.errors {
+                for (i, e) in errors.iter().enumerate() {
+                    error!(
+                        error_index = i,
+                        resource = e.get("resource").and_then(|v| v.as_str()).unwrap_or("unknown"),
+                        field = e.get("field").and_then(|v| v.as_str()).unwrap_or("unknown"),
+                        code = e.get("code").and_then(|v| v.as_str()).unwrap_or("unknown"),
+                        "GitHub API error detail"
+                    );
+                }
+            }
+        }
+        octocrab::Error::Http { source, backtrace: _ } => {
+            error!(
+                error_type = "HTTP",
+                details = %source,
+                "HTTP transport error"
+            );
+        }
+        octocrab::Error::Serde { source, backtrace: _ } => {
+            error!(
+                error_type = "Serde",
+                details = %source,
+                "JSON parsing error - API may have returned HTML error page or unexpected format"
+            );
+            warn!("This often indicates: 1) Invalid API URL, 2) Authentication failure, 3) Network proxy/firewall interference");
+        }
+        octocrab::Error::InvalidHeaderValue { source, backtrace: _ } => {
+            error!(
+                error_type = "InvalidHeader",
+                details = %source,
+                "Invalid HTTP header value"
+            );
+        }
+        octocrab::Error::Uri { source, backtrace: _ } => {
+            error!(
+                error_type = "URL",
+                details = %source,
+                "Invalid URL"
+            );
+        }
+        octocrab::Error::Service { source, backtrace: _ } => {
+            error!(
+                error_type = "Service",
+                details = %source,
+                "Service error"
+            );
+        }
+        octocrab::Error::Other { source, backtrace: _ } => {
+            error!(
+                error_type = "Other",
+                details = %source,
+                "Other error"
+            );
+        }
+        _ => {
+            error!(error_type = "Unknown", details = %err, "Unknown error type");
+        }
+    }
+}
 
 /// GitHub client using octocrab with retry support
 pub struct OctocrabClient {
@@ -168,9 +245,24 @@ impl OctocrabClient {
 impl GitHubClient for OctocrabClient {
     #[instrument(skip(self), fields(repo = %repo))]
     async fn get_repository(&self, repo: &RepoId) -> Result<Repository> {
-        debug!("Fetching repository info");
+        let endpoint = format!("/repos/{}/{}", repo.owner, repo.name);
+        info!(endpoint = %endpoint, "Fetching repository info");
 
-        let r = self.client.repos(&repo.owner, &repo.name).get().await?;
+        let r = match self.client.repos(&repo.owner, &repo.name).get().await {
+            Ok(r) => {
+                debug!(
+                    repo_id = r.id.0,
+                    full_name = r.full_name.as_deref().unwrap_or("unknown"),
+                    private = r.private.unwrap_or(false),
+                    "Successfully fetched repository"
+                );
+                r
+            }
+            Err(e) => {
+                log_api_error("get_repository", &endpoint, &e);
+                return Err(e.into());
+            }
+        };
 
         Ok(Repository {
             id: r.id.0 as i64,
@@ -186,15 +278,26 @@ impl GitHubClient for OctocrabClient {
     }
 
     async fn list_org_repos(&self, org: &str) -> Result<Vec<Repository>> {
-        debug!("Fetching organization repositories");
+        let endpoint = format!("/orgs/{}/repos", org);
+        info!(endpoint = %endpoint, org = org, "Fetching organization repositories");
 
-        let page = self
+        let page = match self
             .client
             .orgs(org)
             .list_repos()
             .per_page(100)
             .send()
-            .await?;
+            .await
+        {
+            Ok(p) => {
+                debug!(repos_count = p.items.len(), "Fetched organization repositories");
+                p
+            }
+            Err(e) => {
+                log_api_error("list_org_repos", &endpoint, &e);
+                return Err(e.into());
+            }
+        };
 
         let repos = page
             .items
@@ -217,7 +320,15 @@ impl GitHubClient for OctocrabClient {
 
     #[instrument(skip(self), fields(repo = %repo))]
     async fn list_issues(&self, repo: &RepoId, params: IssueParams) -> Result<Vec<Issue>> {
-        debug!("Fetching issues");
+        let endpoint = format!("/repos/{}/{}/issues", repo.owner, repo.name);
+        info!(
+            endpoint = %endpoint,
+            state = ?params.state,
+            labels = ?params.labels,
+            assignee = ?params.assignee,
+            per_page = params.per_page,
+            "Starting to fetch issues"
+        );
 
         let state = match params.state {
             IssueStateFilter::Open => octocrab::params::State::Open,
@@ -232,21 +343,45 @@ impl GitHubClient for OctocrabClient {
             .per_page(params.per_page.min(100) as u8);
 
         if let Some(labels) = &params.labels {
+            debug!(labels = ?labels, "Filtering by labels");
             builder = builder.labels(labels);
         }
 
         if let Some(assignee) = &params.assignee {
+            debug!(assignee = %assignee, "Filtering by assignee");
             builder = builder.assignee(assignee.as_str());
         }
 
         if let Some(since) = params.since {
+            debug!(since = %since, "Filtering by since date");
             builder = builder.since(since);
         }
 
+        debug!("Sending initial issues request");
         let mut all_issues = Vec::new();
-        let mut page = builder.send().await?;
+        let mut page = match builder.send().await {
+            Ok(p) => {
+                debug!(
+                    items_in_page = p.items.len(),
+                    has_next = p.next.is_some(),
+                    "Received first page of issues"
+                );
+                p
+            }
+            Err(e) => {
+                log_api_error("list_issues", &endpoint, &e);
+                return Err(e.into());
+            }
+        };
 
+        let mut page_num = 1;
         loop {
+            debug!(
+                page = page_num,
+                items = page.items.len(),
+                "Processing issues page"
+            );
+
             for issue in page.items {
                 // Skip pull requests (GitHub API includes them in issues)
                 if issue.pull_request.is_none() {
@@ -254,36 +389,83 @@ impl GitHubClient for OctocrabClient {
                 }
             }
 
+            if page.next.is_none() {
+                debug!("No more pages, finished fetching issues");
+                break;
+            }
+
+            page_num += 1;
+            debug!(page = page_num, "Fetching next page of issues");
+
             page = match self
                 .client
                 .get_page::<octocrab::models::issues::Issue>(&page.next)
-                .await?
+                .await
             {
-                Some(next) => next,
-                None => break,
+                Ok(Some(next)) => {
+                    debug!(
+                        items_in_page = next.items.len(),
+                        has_next = next.next.is_some(),
+                        "Received next page of issues"
+                    );
+                    next
+                }
+                Ok(None) => {
+                    debug!("No more pages available");
+                    break;
+                }
+                Err(e) => {
+                    log_api_error("list_issues (pagination)", &endpoint, &e);
+                    return Err(e.into());
+                }
             };
         }
 
-        debug!(count = all_issues.len(), "Fetched issues");
+        info!(
+            total_issues = all_issues.len(),
+            pages_fetched = page_num,
+            "Completed fetching issues"
+        );
         Ok(all_issues)
     }
 
+    #[instrument(skip(self), fields(repo = %repo, issue_number = number))]
     async fn get_issue(&self, repo: &RepoId, number: u64) -> Result<Issue> {
-        let issue = self
+        let endpoint = format!("/repos/{}/{}/issues/{}", repo.owner, repo.name, number);
+        info!(endpoint = %endpoint, "Fetching single issue");
+
+        let issue = match self
             .client
             .issues(&repo.owner, &repo.name)
             .get(number)
-            .await?;
+            .await
+        {
+            Ok(i) => {
+                debug!(
+                    issue_id = i.id.0,
+                    title = %i.title,
+                    state = ?i.state,
+                    "Successfully fetched issue"
+                );
+                i
+            }
+            Err(e) => {
+                log_api_error("get_issue", &endpoint, &e);
+                return Err(e.into());
+            }
+        };
 
         Ok(Self::convert_issue(issue))
     }
 
+    #[instrument(skip(self), fields(repo = %repo, issue_number = number))]
     async fn list_issue_events(&self, repo: &RepoId, number: u64) -> Result<Vec<IssueEvent>> {
         // Use the REST API directly for issue events since octocrab doesn't have list_events
         let route = format!(
             "/repos/{}/{}/issues/{}/events?per_page=100",
             repo.owner, repo.name, number
         );
+        info!(endpoint = %route, "Fetching issue events");
 
         #[derive(serde::Deserialize)]
         struct EventLabel {
@@ -300,9 +482,18 @@ impl GitHubClient for OctocrabClient {
             assignee: Option<octocrab::models::Author>,
         }
 
-        let events: Vec<ApiEvent> = self.client.get(&route, None::<&()>).await?;
+        let events: Vec<ApiEvent> = match self.client.get::<Vec<ApiEvent>, _, _>(&route, None::<&()>).await {
+            Ok(e) => {
+                debug!(events_count = e.len(), "Successfully fetched issue events");
+                e
+            }
+            Err(e) => {
+                log_api_error("list_issue_events", &route, &e);
+                return Err(e.into());
+            }
+        };
 
-        Ok(events
+        let result: Vec<IssueEvent> = events
             .into_iter()
             .map(|e| IssueEvent {
                 id: e.id,
@@ -312,27 +503,51 @@ impl GitHubClient for OctocrabClient {
                 label_name: e.label.map(|l| l.name),
                 assignee: e.assignee.map(Self::convert_user),
             })
-            .collect())
+            .collect();
+
+        info!(total_events = result.len(), "Completed fetching issue events");
+        Ok(result)
     }
 
+    #[instrument(skip(self), fields(repo = %repo))]
     async fn list_milestones(&self, repo: &RepoId) -> Result<Vec<Milestone>> {
         // Use the REST API directly for milestones
         let route = format!(
             "/repos/{}/{}/milestones?state=all&per_page=100",
             repo.owner, repo.name
         );
-        let milestones: Vec<octocrab::models::Milestone> =
-            self.client.get(&route, None::<&()>).await?;
+        info!(endpoint = %route, "Fetching milestones");
 
-        Ok(milestones
+        let milestones: Vec<octocrab::models::Milestone> =
+            match self.client.get::<Vec<octocrab::models::Milestone>, _, _>(&route, None::<&()>).await {
+                Ok(m) => {
+                    debug!(milestones_count = m.len(), "Successfully fetched milestones");
+                    m
+                }
+                Err(e) => {
+                    log_api_error("list_milestones", &route, &e);
+                    return Err(e.into());
+                }
+            };
+
+        let result: Vec<Milestone> = milestones
             .into_iter()
             .map(Self::convert_milestone)
-            .collect())
+            .collect();
+
+        info!(total_milestones = result.len(), "Completed fetching milestones");
+        Ok(result)
     }
 
     #[instrument(skip(self), fields(repo = %repo))]
     async fn list_pulls(&self, repo: &RepoId, params: PullParams) -> Result<Vec<PullRequest>> {
-        debug!("Fetching pull requests");
+        let endpoint = format!("/repos/{}/{}/pulls", repo.owner, repo.name);
+        info!(
+            endpoint = %endpoint,
+            state = ?params.state,
+            per_page = params.per_page,
+            "Starting to fetch pull requests"
+        );
 
         let state = match params.state {
             PullStateFilter::Open => octocrab::params::State::Open,
@@ -340,16 +555,31 @@ impl GitHubClient for OctocrabClient {
             PullStateFilter::All => octocrab::params::State::All,
         };
 
-        let page = self
+        debug!("Sending pull requests request");
+        let page = match self
             .client
             .pulls(&repo.owner, &repo.name)
             .list()
             .state(state)
             .per_page(params.per_page.min(100) as u8)
             .send()
-            .await?;
+            .await
+        {
+            Ok(p) => {
+                debug!(
+                    items_in_page = p.items.len(),
+                    has_next = p.next.is_some(),
+                    "Successfully fetched pull requests page"
+                );
+                p
+            }
+            Err(e) => {
+                log_api_error("list_pulls", &endpoint, &e);
+                return Err(e.into());
+            }
+        };
 
-        let prs = page
+        let prs: Vec<PullRequest> = page
             .items
             .into_iter()
             .map(|pr| {
@@ -404,15 +634,36 @@ impl GitHubClient for OctocrabClient {
             })
             .collect();
 
+        info!(total_prs = prs.len(), "Completed fetching pull requests");
         Ok(prs)
     }
 
+    #[instrument(skip(self), fields(repo = %repo, pr_number = number))]
     async fn get_pull(&self, repo: &RepoId, number: u64) -> Result<PullRequest> {
-        let pr = self
+        let endpoint = format!("/repos/{}/{}/pulls/{}", repo.owner, repo.name, number);
+        info!(endpoint = %endpoint, "Fetching single pull request");
+
+        let pr = match self
             .client
             .pulls(&repo.owner, &repo.name)
             .get(number)
-            .await?;
+            .await
+        {
+            Ok(p) => {
+                debug!(
+                    pr_id = p.id.0,
+                    title = p.title.as_deref().unwrap_or("untitled"),
+                    state = ?p.state,
+                    draft = p.draft.unwrap_or(false),
+                    "Successfully fetched pull request"
+                );
+                p
+            }
+            Err(e) => {
+                log_api_error("get_pull", &endpoint, &e);
+                return Err(e.into());
+            }
+        };
 
         let is_open = pr
             .state
@@ -464,15 +715,29 @@ impl GitHubClient for OctocrabClient {
         })
     }
 
+    #[instrument(skip(self), fields(repo = %repo, pr_number = number))]
     async fn list_pull_reviews(&self, repo: &RepoId, number: u64) -> Result<Vec<Review>> {
-        let reviews = self
+        let endpoint = format!("/repos/{}/{}/pulls/{}/reviews", repo.owner, repo.name, number);
+        info!(endpoint = %endpoint, "Fetching pull request reviews");
+
+        let reviews = match self
             .client
             .pulls(&repo.owner, &repo.name)
             .list_reviews(number)
             .send()
-            .await?;
+            .await
+        {
+            Ok(r) => {
+                debug!(reviews_count = r.items.len(), "Successfully fetched reviews");
+                r
+            }
+            Err(e) => {
+                log_api_error("list_pull_reviews", &endpoint, &e);
+                return Err(e.into());
+            }
+        };
 
-        Ok(reviews
+        let result: Vec<Review> = reviews
             .items
             .into_iter()
             .map(|r| Review {
@@ -482,20 +747,37 @@ impl GitHubClient for OctocrabClient {
                 state: r.state.map(|s| format!("{:?}", s)).unwrap_or_default(),
                 submitted_at: r.submitted_at,
             })
-            .collect())
+            .collect();
+
+        info!(total_reviews = result.len(), "Completed fetching reviews");
+        Ok(result)
     }
 
+    #[instrument(skip(self), fields(repo = %repo))]
     async fn list_releases(&self, repo: &RepoId) -> Result<Vec<Release>> {
-        let releases = self
+        let endpoint = format!("/repos/{}/{}/releases", repo.owner, repo.name);
+        info!(endpoint = %endpoint, "Fetching releases");
+
+        let releases = match self
             .client
             .repos(&repo.owner, &repo.name)
             .releases()
             .list()
             .per_page(100)
             .send()
-            .await?;
+            .await
+        {
+            Ok(r) => {
+                debug!(releases_count = r.items.len(), "Successfully fetched releases");
+                r
+            }
+            Err(e) => {
+                log_api_error("list_releases", &endpoint, &e);
+                return Err(e.into());
+            }
+        };
 
-        Ok(releases
+        let result: Vec<Release> = releases
             .items
             .into_iter()
             .map(|r| Release {
@@ -514,16 +796,40 @@ impl GitHubClient for OctocrabClient {
                 created_at: r.created_at.unwrap_or_else(chrono::Utc::now),
                 published_at: r.published_at,
             })
-            .collect())
+            .collect();
+
+        info!(total_releases = result.len(), "Completed fetching releases");
+        Ok(result)
     }
 
+    #[instrument(skip(self), fields(repo = %repo, tag = %tag))]
     async fn get_release(&self, repo: &RepoId, tag: &str) -> Result<Release> {
-        let r = self
+        let endpoint = format!("/repos/{}/{}/releases/tags/{}", repo.owner, repo.name, tag);
+        info!(endpoint = %endpoint, "Fetching release by tag");
+
+        let r = match self
             .client
             .repos(&repo.owner, &repo.name)
             .releases()
             .get_by_tag(tag)
-            .await?;
+            .await
+        {
+            Ok(rel) => {
+                debug!(
+                    release_id = rel.id.0,
+                    tag_name = %rel.tag_name,
+                    name = rel.name.as_deref().unwrap_or("unnamed"),
+                    draft = rel.draft,
+                    prerelease = rel.prerelease,
+                    "Successfully fetched release"
+                );
+                rel
+            }
+            Err(e) => {
+                log_api_error("get_release", &endpoint, &e);
+                return Err(e.into());
+            }
+        };
 
         Ok(Release {
             id: r.id.0 as i64,
@@ -543,8 +849,25 @@ impl GitHubClient for OctocrabClient {
         })
     }
 
+    #[instrument(skip(self), fields(username = %username))]
     async fn get_user(&self, username: &str) -> Result<User> {
-        let user = self.client.users(username).profile().await?;
+        let endpoint = format!("/users/{}", username);
+        info!(endpoint = %endpoint, "Fetching user profile");
+
+        let user = match self.client.users(username).profile().await {
+            Ok(u) => {
+                debug!(
+                    user_id = u.id.0,
+                    login = %u.login,
+                    "Successfully fetched user profile"
+                );
+                u
+            }
+            Err(e) => {
+                log_api_error("get_user", &endpoint, &e);
+                return Err(e.into());
+            }
+        };
 
         Ok(User {
             id: user.id.0 as i64,
@@ -554,8 +877,26 @@ impl GitHubClient for OctocrabClient {
         })
     }
 
+    #[instrument(skip(self))]
     async fn rate_limit(&self) -> Result<RateLimitInfo> {
-        let rate_limit = self.client.ratelimit().get().await?;
+        let endpoint = "/rate_limit";
+        info!(endpoint = %endpoint, "Fetching rate limit status");
+
+        let rate_limit = match self.client.ratelimit().get().await {
+            Ok(rl) => {
+                debug!(
+                    remaining = rl.resources.core.remaining,
+                    limit = rl.resources.core.limit,
+                    reset = %rl.resources.core.reset,
+                    "Successfully fetched rate limit"
+                );
+                rl
+            }
+            Err(e) => {
+                log_api_error("rate_limit", endpoint, &e);
+                return Err(e.into());
+            }
+        };
 
         Ok(RateLimitInfo {
             remaining: rate_limit.resources.core.remaining as u32,
