@@ -41,6 +41,7 @@ dirs = "5.0"
 # TOML parsing
 toml = "0.8"
 
+
 [dev-dependencies]
 mockall = { workspace = true }
 wiremock = { workspace = true }

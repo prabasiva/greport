@@ -1,5 +1,6 @@
 //! Octocrab-based GitHub client implementation
 
+use super::retry::RetryConfig;
 use super::{
     GitHubClient, IssueParams, IssueStateFilter, PullParams, PullStateFilter, RateLimitInfo, RepoId,
 };
@@ -12,9 +13,10 @@ use async_trait::async_trait;
 use octocrab::Octocrab;
 use tracing::{debug, instrument};
 
-/// GitHub client using octocrab
+/// GitHub client using octocrab with retry support
 pub struct OctocrabClient {
     client: Octocrab,
+    retry_config: RetryConfig,
 }
 
 impl OctocrabClient {
@@ -52,7 +54,16 @@ impl OctocrabClient {
             .map_err(|e| Error::Custom(format!("Failed to create GitHub client: {}", e)))?;
 
         debug!("GitHub client created successfully");
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            retry_config: RetryConfig::default(),
+        })
+    }
+
+    /// Set custom retry configuration
+    pub fn with_retry_config(mut self, config: RetryConfig) -> Self {
+        self.retry_config = config;
+        self
     }
 
     /// Create a client with only a token (uses default GitHub.com API)
