@@ -66,7 +66,7 @@ impl BurndownCalculator {
                 completed: completed_by_date,
             });
 
-            current = current + Duration::days(1);
+            current += Duration::days(1);
         }
 
         // Calculate ideal burndown
@@ -203,7 +203,7 @@ impl BurndownCalculator {
                 completed,
             });
 
-            current = current + Duration::days(1);
+            current += Duration::days(1);
         }
 
         BurnupReport {
@@ -271,7 +271,11 @@ mod tests {
             number,
             title: format!("Issue #{}", number),
             body: None,
-            state: if closed_days_ago.is_some() { IssueState::Closed } else { IssueState::Open },
+            state: if closed_days_ago.is_some() {
+                IssueState::Closed
+            } else {
+                IssueState::Open
+            },
             labels: vec![],
             assignees: vec![],
             milestone,
@@ -288,10 +292,10 @@ mod tests {
     fn test_burndown_basic() {
         let milestone = create_test_milestone(14, Some(14));
         let issues = vec![
-            create_test_issue(1, Some(1), 14, Some(7)),  // Closed 7 days ago
-            create_test_issue(2, Some(1), 14, Some(3)),  // Closed 3 days ago
-            create_test_issue(3, Some(1), 14, None),     // Still open
-            create_test_issue(4, Some(1), 14, None),     // Still open
+            create_test_issue(1, Some(1), 14, Some(7)), // Closed 7 days ago
+            create_test_issue(2, Some(1), 14, Some(3)), // Closed 3 days ago
+            create_test_issue(3, Some(1), 14, None),    // Still open
+            create_test_issue(4, Some(1), 14, None),    // Still open
         ];
 
         let report = BurndownCalculator::calculate(&issues, &milestone);
@@ -341,10 +345,10 @@ mod tests {
     fn test_burndown_filters_by_milestone() {
         let milestone = create_test_milestone(7, Some(7));
         let issues = vec![
-            create_test_issue(1, Some(1), 7, None),    // In milestone
-            create_test_issue(2, Some(1), 7, None),    // In milestone
-            create_test_issue(3, Some(2), 7, None),    // Different milestone
-            create_test_issue(4, None, 7, None),       // No milestone
+            create_test_issue(1, Some(1), 7, None), // In milestone
+            create_test_issue(2, Some(1), 7, None), // In milestone
+            create_test_issue(3, Some(2), 7, None), // Different milestone
+            create_test_issue(4, None, 7, None),    // No milestone
         ];
 
         let report = BurndownCalculator::calculate(&issues, &milestone);

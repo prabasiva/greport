@@ -58,7 +58,10 @@ pub async fn get_notes(
         .ok_or_else(|| ApiError::NotFound(format!("Milestone not found: {}", query.milestone)))?;
 
     // Get closed issues for milestone
-    let issues = state.github.list_issues(&repo_id, IssueParams::closed()).await?;
+    let issues = state
+        .github
+        .list_issues(&repo_id, IssueParams::closed())
+        .await?;
     let milestone_issues: Vec<_> = issues
         .into_iter()
         .filter(|i| i.milestone.as_ref().map(|m| m.id) == Some(ms.id))

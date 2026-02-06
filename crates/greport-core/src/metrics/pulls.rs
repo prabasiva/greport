@@ -99,7 +99,7 @@ impl PullMetricsCalculator {
         let mut sorted = values.to_vec();
         sorted.sort();
         let mid = sorted.len() / 2;
-        if sorted.len() % 2 == 0 {
+        if sorted.len().is_multiple_of(2) {
             Some((sorted[mid - 1] + sorted[mid]) as f64 / 2.0)
         } else {
             Some(sorted[mid] as f64)
@@ -146,6 +146,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn create_test_pr(
         number: u64,
         state: PullState,
@@ -177,7 +178,11 @@ mod tests {
             changed_files: 1,
             created_at: now - Duration::hours(created_hours_ago),
             updated_at: now,
-            closed_at: if state == PullState::Closed { Some(now) } else { None },
+            closed_at: if state == PullState::Closed {
+                Some(now)
+            } else {
+                None
+            },
         }
     }
 

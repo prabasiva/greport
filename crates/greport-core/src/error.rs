@@ -10,7 +10,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     /// GitHub API error
     #[error("GitHub API error: {0}")]
-    GitHubApi(#[from] octocrab::Error),
+    GitHubApi(Box<octocrab::Error>),
 
     /// Invalid repository format
     #[error("Invalid repository format: {0}. Expected 'owner/repo'")]
@@ -74,5 +74,11 @@ impl Error {
     /// Check if the error is retryable
     pub fn is_retryable(&self) -> bool {
         matches!(self, Error::Network(_) | Error::RateLimitExceeded { .. })
+    }
+}
+
+impl From<octocrab::Error> for Error {
+    fn from(err: octocrab::Error) -> Self {
+        Error::GitHubApi(Box::new(err))
     }
 }

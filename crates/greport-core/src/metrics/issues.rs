@@ -143,7 +143,7 @@ impl IssueMetricsCalculator {
         let mut sorted = values.to_vec();
         sorted.sort();
         let mid = sorted.len() / 2;
-        if sorted.len() % 2 == 0 {
+        if sorted.len().is_multiple_of(2) {
             Some((sorted[mid - 1] + sorted[mid]) as f64 / 2.0)
         } else {
             Some(sorted[mid] as f64)
@@ -194,7 +194,7 @@ impl IssueMetricsCalculator {
             let age = issue.age_days();
             for bucket in &mut buckets {
                 let in_bucket =
-                    age >= bucket.min_days && bucket.max_days.map_or(true, |max| age < max);
+                    age >= bucket.min_days && bucket.max_days.is_none_or(|max| age < max);
                 if in_bucket {
                     bucket.count += 1;
                     break;
@@ -260,7 +260,10 @@ mod tests {
 
     #[test]
     fn test_median_calculation() {
-        assert_eq!(IssueMetricsCalculator::calculate_median(&[1, 2, 3]), Some(2.0));
+        assert_eq!(
+            IssueMetricsCalculator::calculate_median(&[1, 2, 3]),
+            Some(2.0)
+        );
         assert_eq!(
             IssueMetricsCalculator::calculate_median(&[1, 2, 3, 4]),
             Some(2.5)

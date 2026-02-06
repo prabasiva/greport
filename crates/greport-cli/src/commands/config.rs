@@ -18,7 +18,9 @@ pub fn handle_config(command: &ConfigCommands) -> anyhow::Result<()> {
         ConfigCommands::Set { key, value } => {
             println!("Setting {} = {}", key, value);
             // TODO: Implement config modification
-            anyhow::bail!("Config modification not yet implemented. Edit the config file directly.");
+            anyhow::bail!(
+                "Config modification not yet implemented. Edit the config file directly."
+            );
         }
 
         ConfigCommands::Path => {

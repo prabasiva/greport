@@ -78,11 +78,19 @@ pub fn format_issue_metrics(metrics: &IssueMetrics) -> anyhow::Result<()> {
     println!("Stale:        {}", metrics.stale_count.to_string().yellow());
 
     if let Some(avg) = metrics.avg_time_to_close_hours {
-        println!("\nAvg time to close: {:.1} hours ({:.1} days)", avg, avg / 24.0);
+        println!(
+            "\nAvg time to close: {:.1} hours ({:.1} days)",
+            avg,
+            avg / 24.0
+        );
     }
 
     if let Some(median) = metrics.median_time_to_close_hours {
-        println!("Median time to close: {:.1} hours ({:.1} days)", median, median / 24.0);
+        println!(
+            "Median time to close: {:.1} hours ({:.1} days)",
+            median,
+            median / 24.0
+        );
     }
 
     println!("\n{}", "By Label:".bold());
@@ -127,8 +135,16 @@ pub fn format_velocity(velocity: &VelocityMetrics) -> anyhow::Result<()> {
     }
 
     println!("{table}");
-    println!("\nAverage opened per {}: {:.1}", velocity.period.label(), velocity.avg_opened);
-    println!("Average closed per {}: {:.1}", velocity.period.label(), velocity.avg_closed);
+    println!(
+        "\nAverage opened per {}: {:.1}",
+        velocity.period.label(),
+        velocity.avg_opened
+    );
+    println!(
+        "Average closed per {}: {:.1}",
+        velocity.period.label(),
+        velocity.avg_closed
+    );
     println!("Trend: {}", velocity.trend.label());
 
     Ok(())
@@ -268,7 +284,11 @@ pub fn format_pull_metrics(metrics: &PullMetrics) -> anyhow::Result<()> {
     println!("Drafts:          {}", metrics.draft_count);
 
     if let Some(avg) = metrics.avg_time_to_merge_hours {
-        println!("\nAvg time to merge: {:.1} hours ({:.1} days)", avg, avg / 24.0);
+        println!(
+            "\nAvg time to merge: {:.1} hours ({:.1} days)",
+            avg,
+            avg / 24.0
+        );
     }
 
     println!("\n{}", "By Size:".bold());

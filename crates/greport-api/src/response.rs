@@ -41,7 +41,7 @@ pub struct PaginationMeta {
 impl<T> PaginatedResponse<T> {
     /// Create a paginated response
     pub fn new(data: Vec<T>, page: u32, per_page: u32, total: u32) -> Self {
-        let total_pages = (total + per_page - 1) / per_page;
+        let total_pages = total.div_ceil(per_page);
         Self {
             data,
             meta: PaginationMeta {

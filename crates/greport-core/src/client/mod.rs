@@ -2,9 +2,12 @@
 
 mod octocrab_client;
 mod params;
+mod retry;
 
 #[cfg(any(test, feature = "mock"))]
 mod mock_client;
+
+pub use retry::RetryConfig;
 
 pub use octocrab_client::OctocrabClient;
 pub use params::*;

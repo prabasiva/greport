@@ -33,7 +33,10 @@ pub async fn list_contributors(
 ) -> Result<Json<ApiResponse<Vec<ContributorStats>>>, ApiError> {
     let repo_id = RepoId::new(owner, repo);
 
-    let issues = state.github.list_issues(&repo_id, IssueParams::all()).await?;
+    let issues = state
+        .github
+        .list_issues(&repo_id, IssueParams::all())
+        .await?;
     let prs = state.github.list_pulls(&repo_id, PullParams::all()).await?;
 
     let mut contributors: HashMap<String, ContributorStats> = HashMap::new();

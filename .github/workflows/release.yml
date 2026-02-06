@@ -1,0 +1,199 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Build release binaries for all platforms
+  build:
+    name: Build ${{ matrix.artifact }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: greport-linux-amd64
+            extension: ""
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact: greport-linux-amd64-musl
+            extension: ""
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: greport-macos-amd64
+            extension: ""
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: greport-macos-arm64
+            extension: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: greport-windows-amd64
+            extension: ".exe"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+
+      - name: Install musl tools (Linux musl)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Create release archive (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          mkdir -p release
+          cp target/${{ matrix.target }}/release/greport${{ matrix.extension }} release/
+          cp target/${{ matrix.target }}/release/greport-api${{ matrix.extension }} release/
+          cp README.md LICENSE* release/ 2>/dev/null || true
+          cp -r docs release/
+          cd release
+          tar -czvf ../${{ matrix.artifact }}.tar.gz *
+
+      - name: Create release archive (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release
+          Copy-Item "target/${{ matrix.target }}/release/greport${{ matrix.extension }}" -Destination release/
+          Copy-Item "target/${{ matrix.target }}/release/greport-api${{ matrix.extension }}" -Destination release/
+          Copy-Item README.md, LICENSE* -Destination release/ -ErrorAction SilentlyContinue
+          Copy-Item -Recurse docs -Destination release/
+          Compress-Archive -Path release/* -DestinationPath ${{ matrix.artifact }}.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.zip
+
+  # Create GitHub release
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure
+        run: ls -R artifacts
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          find . -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec sha256sum {} \; > checksums.txt
+          cat checksums.txt
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Read release notes
+        id: release_notes
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          NOTES_FILE="docs/RELEASE-NOTES-${VERSION}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            echo "Found release notes: $NOTES_FILE"
+            {
+              echo 'NOTES<<EOF'
+              cat "$NOTES_FILE"
+              echo 'EOF'
+            } >> $GITHUB_OUTPUT
+          else
+            echo "No release notes found for $VERSION"
+            {
+              echo 'NOTES<<EOF'
+              echo "## Release $VERSION"
+              echo ""
+              echo "See [CHANGELOG](CHANGELOG.md) for details."
+              echo 'EOF'
+            } >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: greport ${{ steps.version.outputs.VERSION }}
+          body: ${{ steps.release_notes.outputs.NOTES }}
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+            artifacts/checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Publish Docker images
+  docker:
+    name: Publish Docker Images
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push CLI image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile.cli
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/greport:${{ steps.version.outputs.VERSION }}
+            ghcr.io/${{ github.repository }}/greport:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile.api
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/greport-api:${{ steps.version.outputs.VERSION }}
+            ghcr.io/${{ github.repository }}/greport-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

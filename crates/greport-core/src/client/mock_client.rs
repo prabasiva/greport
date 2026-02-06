@@ -217,19 +217,17 @@ impl MockGitHubClient {
             },
         ];
 
-        let releases = vec![
-            Release {
-                id: 1,
-                tag_name: "v0.1.0".to_string(),
-                name: Some("Initial Release".to_string()),
-                body: Some("First release of the project".to_string()),
-                draft: false,
-                prerelease: false,
-                author: test_user.clone(),
-                created_at: two_weeks_ago,
-                published_at: Some(two_weeks_ago),
-            },
-        ];
+        let releases = vec![Release {
+            id: 1,
+            tag_name: "v0.1.0".to_string(),
+            name: Some("Initial Release".to_string()),
+            body: Some("First release of the project".to_string()),
+            draft: false,
+            prerelease: false,
+            author: test_user.clone(),
+            created_at: two_weeks_ago,
+            published_at: Some(two_weeks_ago),
+        }];
 
         let repo = Repository {
             id: 1,
@@ -307,7 +305,9 @@ impl GitHubClient for MockGitHubClient {
             })
             .filter(|i| {
                 if let Some(ref labels) = params.labels {
-                    labels.iter().all(|l| i.labels.iter().any(|il| il.name == *l))
+                    labels
+                        .iter()
+                        .all(|l| i.labels.iter().any(|il| il.name == *l))
                 } else {
                     true
                 }
@@ -480,8 +480,10 @@ mod tests {
         let client = MockGitHubClient::with_sample_data();
         let repo_id = RepoId::new("test-owner", "test-repo");
 
-        let mut params = IssueParams::default();
-        params.state = super::super::IssueStateFilter::All;
+        let params = IssueParams {
+            state: super::super::IssueStateFilter::All,
+            ..Default::default()
+        };
 
         let issues = client.list_issues(&repo_id, params).await.unwrap();
         assert_eq!(issues.len(), 3);
