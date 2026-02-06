@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::Deserialize;
 
+use crate::convert;
 use crate::error::ApiError;
 use crate::response::{ApiResponse, PaginatedResponse};
 use crate::state::AppState;
@@ -31,6 +32,29 @@ pub async fn list_issues(
     Path((owner, repo)): Path<(String, String)>,
     Query(query): Query<ListIssuesQuery>,
 ) -> Result<Json<PaginatedResponse<Issue>>, ApiError> {
+    // DB-first: try to serve from database
+    if let Some(pool) = &state.db {
+        if let Some(repo_db_id) = convert::get_repo_db_id(pool, &owner, &repo).await {
+            if convert::has_synced_data(pool, repo_db_id, "issues").await {
+                let db_state = match query.state.as_deref() {
+                    Some("open") => Some("open"),
+                    Some("closed") => Some("closed"),
+                    Some("all") | None => None,
+                    _ => Some("open"),
+                };
+                let issues = convert::issues_from_db(pool, repo_db_id, db_state, None).await?;
+                let total = issues.len() as u32;
+                return Ok(Json(PaginatedResponse::new(
+                    issues,
+                    query.page.unwrap_or(1),
+                    query.per_page.unwrap_or(30),
+                    total,
+                )));
+            }
+        }
+    }
+
+    // Fallback: fetch from GitHub API
     let repo_id = RepoId::new(owner, repo);
 
     let issue_state = match query.state.as_deref() {
@@ -66,6 +90,19 @@ pub async fn get_metrics(
     State(state): State<AppState>,
     Path((owner, repo)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<IssueMetrics>>, ApiError> {
+    // DB-first
+    if let Some(pool) = &state.db {
+        if let Some(repo_db_id) = convert::get_repo_db_id(pool, &owner, &repo).await {
+            if convert::has_synced_data(pool, repo_db_id, "issues").await {
+                let issues = convert::issues_from_db(pool, repo_db_id, None, None).await?;
+                let calculator = IssueMetricsCalculator::new(30);
+                let metrics = calculator.calculate(&issues);
+                return Ok(Json(ApiResponse::ok(metrics)));
+            }
+        }
+    }
+
+    // Fallback: GitHub API
     let repo_id = RepoId::new(owner, repo);
     let issues = state
         .github
@@ -89,19 +126,32 @@ pub async fn get_velocity(
     Path((owner, repo)): Path<(String, String)>,
     Query(query): Query<VelocityQuery>,
 ) -> Result<Json<ApiResponse<VelocityMetrics>>, ApiError> {
+    let period = match query.period.as_deref() {
+        Some("day") => Period::Day,
+        Some("month") => Period::Month,
+        _ => Period::Week,
+    };
+    let last = query.last.unwrap_or(12);
+
+    // DB-first
+    if let Some(pool) = &state.db {
+        if let Some(repo_db_id) = convert::get_repo_db_id(pool, &owner, &repo).await {
+            if convert::has_synced_data(pool, repo_db_id, "issues").await {
+                let issues = convert::issues_from_db(pool, repo_db_id, None, None).await?;
+                let velocity = VelocityCalculator::calculate(&issues, period, last);
+                return Ok(Json(ApiResponse::ok(velocity)));
+            }
+        }
+    }
+
+    // Fallback: GitHub API
     let repo_id = RepoId::new(owner, repo);
     let issues = state
         .github
         .list_issues(&repo_id, IssueParams::all())
         .await?;
 
-    let period = match query.period.as_deref() {
-        Some("day") => Period::Day,
-        Some("month") => Period::Month,
-        _ => Period::Week,
-    };
-
-    let velocity = VelocityCalculator::calculate(&issues, period, query.last.unwrap_or(12));
+    let velocity = VelocityCalculator::calculate(&issues, period, last);
 
     Ok(Json(ApiResponse::ok(velocity)))
 }
@@ -116,6 +166,28 @@ pub async fn get_burndown(
     Path((owner, repo)): Path<(String, String)>,
     Query(query): Query<BurndownQuery>,
 ) -> Result<Json<ApiResponse<BurndownReport>>, ApiError> {
+    // DB-first: needs both issues and milestones synced
+    if let Some(pool) = &state.db {
+        if let Some(repo_db_id) = convert::get_repo_db_id(pool, &owner, &repo).await {
+            if convert::has_synced_data(pool, repo_db_id, "issues").await
+                && convert::has_synced_data(pool, repo_db_id, "milestones").await
+            {
+                let milestones = convert::milestones_from_db(pool, repo_db_id).await?;
+                let ms = milestones
+                    .iter()
+                    .find(|m| m.title.eq_ignore_ascii_case(&query.milestone))
+                    .ok_or_else(|| {
+                        ApiError::NotFound(format!("Milestone not found: {}", query.milestone))
+                    })?;
+
+                let issues = convert::issues_from_db(pool, repo_db_id, None, None).await?;
+                let burndown = BurndownCalculator::calculate(&issues, ms);
+                return Ok(Json(ApiResponse::ok(burndown)));
+            }
+        }
+    }
+
+    // Fallback: GitHub API
     let repo_id = RepoId::new(owner, repo);
 
     let milestones = state.github.list_milestones(&repo_id).await?;
@@ -143,9 +215,22 @@ pub async fn get_stale(
     Path((owner, repo)): Path<(String, String)>,
     Query(query): Query<StaleQuery>,
 ) -> Result<Json<ApiResponse<Vec<Issue>>>, ApiError> {
-    let repo_id = RepoId::new(owner, repo);
     let days = query.days.unwrap_or(30);
 
+    // DB-first
+    if let Some(pool) = &state.db {
+        if let Some(repo_db_id) = convert::get_repo_db_id(pool, &owner, &repo).await {
+            if convert::has_synced_data(pool, repo_db_id, "issues").await {
+                let issues =
+                    convert::issues_from_db(pool, repo_db_id, Some("open"), None).await?;
+                let stale: Vec<_> = issues.into_iter().filter(|i| i.is_stale(days)).collect();
+                return Ok(Json(ApiResponse::ok(stale)));
+            }
+        }
+    }
+
+    // Fallback: GitHub API
+    let repo_id = RepoId::new(owner, repo);
     let issues = state
         .github
         .list_issues(&repo_id, IssueParams::open())

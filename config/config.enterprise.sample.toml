@@ -40,3 +40,30 @@ resolution_time_hours = 24
 [sla.priority.high]
 response_time_hours = 8
 resolution_time_hours = 72
+
+# =============================================================================
+# Database Configuration
+# =============================================================================
+[database]
+# PostgreSQL connection URL (can also use DATABASE_URL env var)
+# url = "postgres://user:password@localhost:5432/greport"
+# max_connections = 10
+# acquire_timeout_secs = 5
+# run_migrations = true
+
+# =============================================================================
+# API Server Configuration
+# =============================================================================
+[server]
+# host = "0.0.0.0"
+# port = 9423
+# rate_limit_per_minute = 60
+# cache_ttl_seconds = 300
+# max_page_size = 100
+# require_auth = false
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+[logging]
+# level = "info"

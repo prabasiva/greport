@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::Deserialize;
 
+use crate::convert;
 use crate::error::ApiError;
 use crate::response::{ApiResponse, PaginatedResponse};
 use crate::state::AppState;
@@ -25,6 +26,29 @@ pub async fn list_pulls(
     Path((owner, repo)): Path<(String, String)>,
     Query(query): Query<ListPullsQuery>,
 ) -> Result<Json<PaginatedResponse<PullRequest>>, ApiError> {
+    // DB-first
+    if let Some(pool) = &state.db {
+        if let Some(repo_db_id) = convert::get_repo_db_id(pool, &owner, &repo).await {
+            if convert::has_synced_data(pool, repo_db_id, "pulls").await {
+                let db_state = match query.state.as_deref() {
+                    Some("open") => Some("open"),
+                    Some("closed") => Some("closed"),
+                    Some("all") | None => None,
+                    _ => Some("open"),
+                };
+                let prs = convert::pulls_from_db(pool, repo_db_id, db_state, None).await?;
+                let total = prs.len() as u32;
+                return Ok(Json(PaginatedResponse::new(
+                    prs,
+                    query.page.unwrap_or(1),
+                    query.per_page.unwrap_or(30),
+                    total,
+                )));
+            }
+        }
+    }
+
+    // Fallback: GitHub API
     let repo_id = RepoId::new(owner, repo);
 
     let pr_state = match query.state.as_deref() {
@@ -55,6 +79,18 @@ pub async fn get_metrics(
     State(state): State<AppState>,
     Path((owner, repo)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<PullMetrics>>, ApiError> {
+    // DB-first
+    if let Some(pool) = &state.db {
+        if let Some(repo_db_id) = convert::get_repo_db_id(pool, &owner, &repo).await {
+            if convert::has_synced_data(pool, repo_db_id, "pulls").await {
+                let prs = convert::pulls_from_db(pool, repo_db_id, None, None).await?;
+                let metrics = PullMetricsCalculator::calculate(&prs);
+                return Ok(Json(ApiResponse::ok(metrics)));
+            }
+        }
+    }
+
+    // Fallback: GitHub API
     let repo_id = RepoId::new(owner, repo);
     let prs = state.github.list_pulls(&repo_id, PullParams::all()).await?;
 

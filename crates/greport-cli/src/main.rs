@@ -153,10 +153,13 @@ async fn run() -> anyhow::Result<()> {
     // Load .env file if present
     let dotenv_result = dotenvy::dotenv();
 
+    // Load config early for log level resolution (env var > config.toml > default)
+    let early_config = greport_core::Config::load(None).unwrap_or_default();
+
     // Initialize logging
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "warn".into()),
+            early_config.rust_log("warn"),
         ))
         .with(tracing_subscriber::fmt::layer().with_target(false))
         .init();

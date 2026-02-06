@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::Deserialize;
 
+use crate::convert;
 use crate::error::ApiError;
 use crate::response::{ApiResponse, PaginatedResponse};
 use crate::state::AppState;
@@ -24,6 +25,23 @@ pub async fn list_releases(
     Path((owner, repo)): Path<(String, String)>,
     Query(query): Query<ListReleasesQuery>,
 ) -> Result<Json<PaginatedResponse<Release>>, ApiError> {
+    // DB-first
+    if let Some(pool) = &state.db {
+        if let Some(repo_db_id) = convert::get_repo_db_id(pool, &owner, &repo).await {
+            if convert::has_synced_data(pool, repo_db_id, "releases").await {
+                let releases = convert::releases_from_db(pool, repo_db_id, None).await?;
+                let total = releases.len() as u32;
+                return Ok(Json(PaginatedResponse::new(
+                    releases,
+                    query.page.unwrap_or(1),
+                    query.per_page.unwrap_or(10),
+                    total,
+                )));
+            }
+        }
+    }
+
+    // Fallback: GitHub API
     let repo_id = RepoId::new(owner, repo);
 
     let releases = state.github.list_releases(&repo_id).await?;
@@ -48,6 +66,41 @@ pub async fn get_notes(
     Path((owner, repo)): Path<(String, String)>,
     Query(query): Query<ReleaseNotesQuery>,
 ) -> Result<Json<ApiResponse<ReleaseNotes>>, ApiError> {
+    // DB-first: needs milestones, issues, and pulls all synced
+    if let Some(pool) = &state.db {
+        if let Some(repo_db_id) = convert::get_repo_db_id(pool, &owner, &repo).await {
+            if convert::has_synced_data(pool, repo_db_id, "milestones").await
+                && convert::has_synced_data(pool, repo_db_id, "issues").await
+                && convert::has_synced_data(pool, repo_db_id, "pulls").await
+            {
+                let milestones = convert::milestones_from_db(pool, repo_db_id).await?;
+                let ms = milestones
+                    .iter()
+                    .find(|m| m.title.eq_ignore_ascii_case(&query.milestone))
+                    .ok_or_else(|| {
+                        ApiError::NotFound(format!("Milestone not found: {}", query.milestone))
+                    })?;
+
+                let issues = convert::issues_from_db(pool, repo_db_id, None, None).await?;
+                let milestone_issues: Vec<_> = issues
+                    .into_iter()
+                    .filter(|i| i.milestone.as_ref().map(|m| m.id) == Some(ms.id))
+                    .filter(|i| i.state == IssueState::Closed)
+                    .collect();
+
+                let prs = convert::pulls_from_db(pool, repo_db_id, None, None).await?;
+                let merged_prs: Vec<_> = prs.into_iter().filter(|p| p.merged).collect();
+
+                let generator = ReleaseNotesGenerator::with_defaults();
+                let version = query.version.unwrap_or_else(|| query.milestone.clone());
+                let notes = generator.generate(&version, &milestone_issues, &merged_prs);
+
+                return Ok(Json(ApiResponse::ok(notes)));
+            }
+        }
+    }
+
+    // Fallback: GitHub API
     let repo_id = RepoId::new(owner, repo);
 
     // Get milestone
@@ -84,6 +137,23 @@ pub async fn get_progress(
     State(state): State<AppState>,
     Path((owner, repo, milestone)): Path<(String, String, String)>,
 ) -> Result<Json<ApiResponse<Milestone>>, ApiError> {
+    // DB-first
+    if let Some(pool) = &state.db {
+        if let Some(repo_db_id) = convert::get_repo_db_id(pool, &owner, &repo).await {
+            if convert::has_synced_data(pool, repo_db_id, "milestones").await {
+                let milestones = convert::milestones_from_db(pool, repo_db_id).await?;
+                let ms = milestones
+                    .into_iter()
+                    .find(|m| m.title.eq_ignore_ascii_case(&milestone))
+                    .ok_or_else(|| {
+                        ApiError::NotFound(format!("Milestone not found: {}", milestone))
+                    })?;
+                return Ok(Json(ApiResponse::ok(ms)));
+            }
+        }
+    }
+
+    // Fallback: GitHub API
     let repo_id = RepoId::new(owner, repo);
 
     let milestones = state.github.list_milestones(&repo_id).await?;

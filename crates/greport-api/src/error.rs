@@ -81,3 +81,10 @@ impl From<anyhow::Error> for ApiError {
         ApiError::Internal(err.to_string())
     }
 }
+
+impl From<sqlx::Error> for ApiError {
+    fn from(err: sqlx::Error) -> Self {
+        tracing::error!("Database error: {:?}", err);
+        ApiError::Internal(format!("Database error: {}", err))
+    }
+}

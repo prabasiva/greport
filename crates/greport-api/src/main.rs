@@ -1,11 +1,13 @@
 //! greport API Server
 
 mod auth;
+mod convert;
 mod error;
 mod rate_limit;
 mod response;
 mod routes;
 mod state;
+mod sync;
 
 use axum::{middleware, Router};
 use std::net::SocketAddr;
@@ -22,16 +24,19 @@ async fn main() -> anyhow::Result<()> {
     // Load .env file
     let _ = dotenvy::dotenv();
 
-    // Initialize tracing
+    // Load config early for logging and bind address
+    let core_config = greport_core::Config::load(None).unwrap_or_default();
+
+    // Initialize tracing (env var > config.toml > default)
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info,tower_http=debug".into()),
+            core_config.rust_log("info,tower_http=debug"),
         ))
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // Create application state
-    let state = AppState::new().await?;
+    // Create application state with pre-loaded config
+    let state = AppState::with_core_config(core_config.clone()).await?;
 
     // Start rate limiter cleanup task
     start_cleanup_task(Arc::clone(&state.rate_limiter));
@@ -39,12 +44,9 @@ async fn main() -> anyhow::Result<()> {
     // Build router with state
     let app = build_router(state);
 
-    // Get bind address
-    let host = std::env::var("API_HOST").unwrap_or_else(|_| "0.0.0.0".into());
-    let port: u16 = std::env::var("API_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(9423);
+    // Get bind address (env var > config.toml > default)
+    let host = core_config.api_host();
+    let port = core_config.api_port();
 
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
     tracing::info!("Starting server on {}", addr);
@@ -115,6 +117,11 @@ fn build_router(state: AppState) -> Router {
         .route(
             "/repos/{owner}/{repo}/sla",
             axum::routing::get(routes::sla::get_sla_report),
+        )
+        // Sync
+        .route(
+            "/repos/{owner}/{repo}/sync",
+            axum::routing::post(routes::sync::sync_repo),
         )
         // Apply middleware in reverse order (last added runs first)
         .layer(middleware::from_fn_with_state(

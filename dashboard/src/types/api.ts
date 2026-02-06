@@ -240,6 +240,17 @@ export interface ContributorStats {
   prs_merged: number;
 }
 
+// Sync
+
+export interface SyncResult {
+  repository: string;
+  issues_synced: number;
+  pulls_synced: number;
+  releases_synced: number;
+  milestones_synced: number;
+  synced_at: string;
+}
+
 // API Response wrappers
 
 export interface ApiResponse<T> {

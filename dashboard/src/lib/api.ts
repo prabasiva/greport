@@ -12,6 +12,7 @@ import type {
   Milestone,
   SlaReportResponse,
   ContributorStats,
+  SyncResult,
   ErrorResponse,
 } from "@/types/api";
 
@@ -169,6 +170,20 @@ export function contributorsUrl(
   return `/api/v1/repos/${owner}/${repo}/contributors${buildQuery(params || {})}`;
 }
 
+// Sync
+export function syncUrl(owner: string, repo: string): string {
+  return `/api/v1/repos/${owner}/${repo}/sync`;
+}
+
+export async function syncRepo(
+  owner: string,
+  repo: string,
+): Promise<ApiResponse<SyncResult>> {
+  return apiFetch<ApiResponse<SyncResult>>(syncUrl(owner, repo), {
+    method: "POST",
+  });
+}
+
 // Re-export types for convenience
 export type {
   ApiResponse,
@@ -184,4 +199,5 @@ export type {
   Milestone,
   SlaReportResponse,
   ContributorStats,
+  SyncResult,
 };

@@ -7,11 +7,12 @@ use axum::{
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::convert;
 use crate::error::ApiError;
 use crate::response::ApiResponse;
 use crate::state::AppState;
 use greport_core::client::{GitHubClient, IssueParams, RepoId};
-use greport_core::models::IssueState;
+use greport_core::models::{Issue, IssueState};
 
 #[derive(Deserialize)]
 pub struct SlaQuery {
@@ -95,8 +96,6 @@ pub async fn get_sla_report(
     Path((owner, repo)): Path<(String, String)>,
     Query(query): Query<SlaQuery>,
 ) -> Result<Json<ApiResponse<SlaReport>>, ApiError> {
-    let repo_id = RepoId::new(owner.clone(), repo.clone());
-
     // Get SLA thresholds
     let response_hours = query
         .response_hours
@@ -105,15 +104,51 @@ pub async fn get_sla_report(
         .resolution_hours
         .unwrap_or(state.config.sla_resolution_hours);
 
-    // Get open issues
+    // DB-first
+    let issues = if let Some(pool) = &state.db {
+        if let Some(repo_db_id) = convert::get_repo_db_id(pool, &owner, &repo).await {
+            if convert::has_synced_data(pool, repo_db_id, "issues").await {
+                convert::issues_from_db(pool, repo_db_id, Some("open"), None).await?
+            } else {
+                fetch_open_issues(&state, &owner, &repo, &query).await?
+            }
+        } else {
+            fetch_open_issues(&state, &owner, &repo, &query).await?
+        }
+    } else {
+        fetch_open_issues(&state, &owner, &repo, &query).await?
+    };
+
+    let report = build_sla_report(&owner, &repo, &issues, response_hours, resolution_hours);
+
+    Ok(Json(ApiResponse::ok(report)))
+}
+
+async fn fetch_open_issues(
+    state: &AppState,
+    owner: &str,
+    repo: &str,
+    query: &SlaQuery,
+) -> Result<Vec<Issue>, ApiError> {
+    let repo_id = RepoId::new(owner.to_string(), repo.to_string());
     let params = IssueParams {
         labels: query
             .labels
+            .as_ref()
             .map(|l| l.split(',').map(String::from).collect()),
         ..IssueParams::open()
     };
     let issues = state.github.list_issues(&repo_id, params).await?;
+    Ok(issues)
+}
 
+fn build_sla_report(
+    owner: &str,
+    repo: &str,
+    issues: &[Issue],
+    response_hours: i64,
+    resolution_hours: i64,
+) -> SlaReport {
     let now = Utc::now();
     let response_threshold = Duration::hours(response_hours);
     let resolution_threshold = Duration::hours(resolution_hours);
@@ -126,7 +161,7 @@ pub async fn get_sla_report(
     let mut at_risk_count = 0;
     let mut within_sla = 0;
 
-    for issue in &issues {
+    for issue in issues {
         if issue.state != IssueState::Open {
             continue;
         }
@@ -212,7 +247,7 @@ pub async fn get_sla_report(
         100.0
     };
 
-    let report = SlaReport {
+    SlaReport {
         repository: format!("{}/{}", owner, repo),
         config: SlaConfig {
             response_time_hours: response_hours,
@@ -229,9 +264,7 @@ pub async fn get_sla_report(
         breaching_issues,
         at_risk_issues,
         generated_at: now.to_rfc3339(),
-    };
-
-    Ok(Json(ApiResponse::ok(report)))
+    }
 }
 
 impl Clone for SlaStatus {

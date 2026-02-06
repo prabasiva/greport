@@ -73,6 +73,63 @@ response_time_hours = 48
 resolution_time_hours = 336  # 14 days
 
 # =============================================================================
+# Database Configuration (API server only)
+# =============================================================================
+[database]
+# PostgreSQL connection URL
+# Can also be set via DATABASE_URL environment variable (takes priority)
+# url = "postgres://user:password@localhost:5432/greport"
+
+# Maximum number of connections in the pool (default: 10)
+# max_connections = 10
+
+# Connection acquire timeout in seconds (default: 5)
+# acquire_timeout_secs = 5
+
+# Run database migrations on startup (default: true)
+# run_migrations = true
+
+# =============================================================================
+# API Server Configuration (API server only)
+# =============================================================================
+[server]
+# Bind host address (default: 0.0.0.0)
+# Can also be set via API_HOST environment variable (takes priority)
+# host = "0.0.0.0"
+
+# Bind port (default: 9423)
+# Can also be set via API_PORT environment variable (takes priority)
+# port = 9423
+
+# Rate limit: maximum requests per minute per client (default: 60)
+# Can also be set via RATE_LIMIT_PER_MINUTE environment variable
+# rate_limit_per_minute = 60
+
+# Cache TTL in seconds for API responses (default: 300)
+# Can also be set via CACHE_TTL_SECONDS environment variable
+# cache_ttl_seconds = 300
+
+# Maximum page size for paginated responses (default: 100)
+# Can also be set via MAX_PAGE_SIZE environment variable
+# max_page_size = 100
+
+# Require API key authentication (default: false)
+# Can also be set via REQUIRE_AUTH environment variable
+# require_auth = false
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+[logging]
+# Log level filter string (default: "warn" for CLI, "info,tower_http=debug" for API)
+# Can also be set via RUST_LOG environment variable (takes priority)
+# Examples:
+#   level = "info"
+#   level = "debug"
+#   level = "info,tower_http=debug,sqlx=warn"
+# level = "info"
+
+# =============================================================================
 # Example Configurations for Different Use Cases
 # =============================================================================
 
