@@ -83,14 +83,19 @@ impl ApiConfig {
 impl AppState {
     /// Create new application state
     pub async fn new() -> anyhow::Result<Self> {
-        // Get GitHub token and optional base URL from environment
+        // Load config from file, then override with environment variables
         tracing::debug!("Initializing application state");
 
-        let token = std::env::var("GITHUB_TOKEN")
-            .map_err(|_| anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))?;
-        tracing::debug!("GITHUB_TOKEN found in environment");
+        let config_file = greport_core::Config::load(None).unwrap_or_default();
 
-        let base_url = std::env::var("GITHUB_BASE_URL").ok();
+        let token = config_file
+            .github_token()
+            .map_err(|_| anyhow::anyhow!("GITHUB_TOKEN not set in environment or ~/.config/greport/config.toml"))?;
+        tracing::debug!("GitHub token loaded");
+
+        let base_url = std::env::var("GITHUB_BASE_URL")
+            .ok()
+            .or(config_file.github.base_url.clone());
         if let Some(ref url) = base_url {
             tracing::info!(base_url = %url, "Using GitHub Enterprise base URL");
         } else {
