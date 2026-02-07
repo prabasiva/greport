@@ -3,15 +3,18 @@
 import { useState, useEffect, useCallback } from "react";
 
 export type CalendarViewMode = "1" | "3";
+export type PlanViewMode = "calendar" | "release-plan";
 
 export interface AppSettings {
   calendarView: CalendarViewMode;
+  planView: PlanViewMode;
 }
 
 const STORAGE_KEY = "greport-settings";
 
 const defaultSettings: AppSettings = {
   calendarView: "3",
+  planView: "calendar",
 };
 
 function loadSettings(): AppSettings {

@@ -118,6 +118,11 @@ fn build_router(state: AppState) -> Router {
             "/repos/{owner}/{repo}/calendar",
             axum::routing::get(routes::calendar::get_calendar),
         )
+        // Release Plan
+        .route(
+            "/repos/{owner}/{repo}/release-plan",
+            axum::routing::get(routes::release_plan::get_release_plan),
+        )
         // SLA
         .route(
             "/repos/{owner}/{repo}/sla",
@@ -168,6 +173,10 @@ fn build_router(state: AppState) -> Router {
         .route(
             "/aggregate/calendar",
             axum::routing::get(routes::calendar::get_aggregate_calendar),
+        )
+        .route(
+            "/aggregate/release-plan",
+            axum::routing::get(routes::release_plan::get_aggregate_release_plan),
         )
         // Apply middleware in reverse order (last added runs first)
         .layer(middleware::from_fn_with_state(

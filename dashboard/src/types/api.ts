@@ -400,6 +400,40 @@ export interface CalendarData {
   summary: CalendarSummary;
 }
 
+// Release Plan types
+
+export type ReleasePlanStatus = "on_track" | "at_risk" | "overdue";
+
+export interface UpcomingRelease {
+  milestone: Milestone;
+  repository: string;
+  progress_percent: number;
+  days_remaining: number;
+  blocker_count: number;
+  status: ReleasePlanStatus;
+}
+
+export interface RecentRelease {
+  release: Release;
+  repository: string;
+  release_type: "stable" | "prerelease" | "draft";
+}
+
+export interface TimelineEntry {
+  date: string;
+  entry_type: "release" | "milestone";
+  title: string;
+  repository: string;
+  is_future: boolean;
+  progress_percent?: number;
+}
+
+export interface ReleasePlan {
+  upcoming: UpcomingRelease[];
+  recent_releases: RecentRelease[];
+  timeline: TimelineEntry[];
+}
+
 // API Response wrappers
 
 export interface ApiResponse<T> {

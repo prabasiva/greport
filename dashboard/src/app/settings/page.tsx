@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRepos } from "@/hooks/use-repos";
-import { useSettings, type CalendarViewMode } from "@/hooks/use-settings";
+import { useSettings, type CalendarViewMode, type PlanViewMode } from "@/hooks/use-settings";
 import { addTrackedRepo, removeTrackedRepo, syncRepo } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9423";
@@ -260,6 +260,50 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* Planning Default View */}
+      <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+          Planning
+        </h3>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          Choose the default view when opening the Planning page.
+        </p>
+        <div className="mt-4">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Default planning view
+          </label>
+          <div className="mt-3 flex gap-3">
+            {([
+              { value: "calendar" as PlanViewMode, label: "Calendar", desc: "Month-grid calendar with event dots" },
+              { value: "release-plan" as PlanViewMode, label: "Release Plan", desc: "Milestones, releases, and timeline" },
+            ]).map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => updateSettings({ planView: opt.value })}
+                className={`flex flex-col rounded-lg border px-4 py-3 text-left transition-colors ${
+                  settings.planView === opt.value
+                    ? "border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950"
+                    : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600"
+                }`}
+              >
+                <span
+                  className={`text-sm font-medium ${
+                    settings.planView === opt.value
+                      ? "text-blue-700 dark:text-blue-300"
+                      : "text-gray-900 dark:text-white"
+                  }`}
+                >
+                  {opt.label}
+                </span>
+                <span className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {opt.desc}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* About */}
       <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -268,7 +312,7 @@ export default function SettingsPage() {
         <dl className="mt-4 space-y-2 text-sm">
           <div className="flex gap-2">
             <dt className="font-medium text-gray-500 dark:text-gray-400">Version:</dt>
-            <dd className="text-gray-900 dark:text-white">0.4.0</dd>
+            <dd className="text-gray-900 dark:text-white">0.5.0</dd>
           </div>
           <div className="flex gap-2">
             <dt className="font-medium text-gray-500 dark:text-gray-400">Source:</dt>

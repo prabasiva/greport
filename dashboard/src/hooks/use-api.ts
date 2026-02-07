@@ -21,6 +21,8 @@ import {
   aggregateVelocityUrl,
   calendarUrl,
   aggregateCalendarUrl,
+  releasePlanUrl,
+  aggregateReleasePlanUrl,
 } from "@/lib/api";
 import type {
   ApiResponse,
@@ -42,6 +44,7 @@ import type {
   AggregateContributorStats,
   AggregateVelocityMetrics,
   CalendarData,
+  ReleasePlan,
 } from "@/types/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9423";
@@ -223,5 +226,25 @@ export function useAggregateCalendar(
 ) {
   return useApi<ApiResponse<CalendarData>>(
     aggregateCalendarUrl(params),
+  );
+}
+
+// Release Plan hooks
+
+export function useReleasePlan(
+  owner: string,
+  repo: string,
+  params?: { months_back?: number; months_forward?: number },
+) {
+  return useApi<ApiResponse<ReleasePlan>>(
+    owner && repo ? releasePlanUrl(owner, repo, params) : null,
+  );
+}
+
+export function useAggregateReleasePlan(
+  params?: { months_back?: number; months_forward?: number },
+) {
+  return useApi<ApiResponse<ReleasePlan>>(
+    aggregateReleasePlanUrl(params),
   );
 }

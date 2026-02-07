@@ -9,7 +9,7 @@ const navigation = [
   { name: "Issues", href: "/issues", icon: CircleDotIcon },
   { name: "Pull Requests", href: "/pulls", icon: GitPullIcon },
   { name: "Releases", href: "/releases", icon: TagIcon },
-  { name: "Calendar", href: "/calendar", icon: CalendarIcon },
+  { name: "Planning", href: "/planning", icon: CalendarIcon },
   { name: "Velocity", href: "/velocity", icon: TrendingUpIcon },
   { name: "Contributors", href: "/contributors", icon: UsersIcon },
   { name: "SLA", href: "/sla", icon: ShieldIcon },
