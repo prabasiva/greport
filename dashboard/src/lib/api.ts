@@ -253,6 +253,36 @@ export function aggregateVelocityUrl(
   return `/api/v1/aggregate/velocity${buildQuery(params || {})}`;
 }
 
+// Calendar
+export function calendarUrl(
+  owner: string,
+  repo: string,
+  params?: { start_date?: string; end_date?: string; types?: string },
+): string {
+  return `/api/v1/repos/${owner}/${repo}/calendar${buildQuery(params || {})}`;
+}
+
+export function aggregateCalendarUrl(
+  params?: { start_date?: string; end_date?: string; types?: string },
+): string {
+  return `/api/v1/aggregate/calendar${buildQuery(params || {})}`;
+}
+
+// Release Plan
+export function releasePlanUrl(
+  owner: string,
+  repo: string,
+  params?: { months_back?: number; months_forward?: number },
+): string {
+  return `/api/v1/repos/${owner}/${repo}/release-plan${buildQuery(params || {})}`;
+}
+
+export function aggregateReleasePlanUrl(
+  params?: { months_back?: number; months_forward?: number },
+): string {
+  return `/api/v1/aggregate/release-plan${buildQuery(params || {})}`;
+}
+
 // Re-export types for convenience
 export type {
   ApiResponse,

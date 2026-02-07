@@ -829,6 +829,173 @@ pub struct RepositoryStats {
     pub releases: i64,
 }
 
+// =============================================================================
+// Date-range queries (for calendar feature)
+// =============================================================================
+
+/// List issues created or closed within a date range
+pub async fn list_issues_in_date_range(
+    pool: &DbPool,
+    repository_id: i64,
+    start: chrono::DateTime<Utc>,
+    end: chrono::DateTime<Utc>,
+) -> sqlx::Result<Vec<IssueRow>> {
+    sqlx::query_as::<_, IssueRow>(
+        r#"
+        SELECT * FROM issues
+        WHERE repository_id = $1
+          AND (
+            (created_at BETWEEN $2 AND $3)
+            OR (closed_at BETWEEN $2 AND $3)
+          )
+        ORDER BY created_at
+        "#,
+    )
+    .bind(repository_id)
+    .bind(start)
+    .bind(end)
+    .fetch_all(pool)
+    .await
+}
+
+/// List milestones with due_on or closed_at within a date range
+pub async fn list_milestones_in_date_range(
+    pool: &DbPool,
+    repository_id: i64,
+    start: chrono::DateTime<Utc>,
+    end: chrono::DateTime<Utc>,
+) -> sqlx::Result<Vec<MilestoneRow>> {
+    sqlx::query_as::<_, MilestoneRow>(
+        r#"
+        SELECT * FROM milestones
+        WHERE repository_id = $1
+          AND (
+            (due_on BETWEEN $2 AND $3)
+            OR (closed_at BETWEEN $2 AND $3)
+          )
+        ORDER BY COALESCE(due_on, closed_at)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(start)
+    .bind(end)
+    .fetch_all(pool)
+    .await
+}
+
+/// List releases published within a date range
+pub async fn list_releases_in_date_range(
+    pool: &DbPool,
+    repository_id: i64,
+    start: chrono::DateTime<Utc>,
+    end: chrono::DateTime<Utc>,
+) -> sqlx::Result<Vec<ReleaseRow>> {
+    sqlx::query_as::<_, ReleaseRow>(
+        r#"
+        SELECT * FROM releases
+        WHERE repository_id = $1
+          AND published_at BETWEEN $2 AND $3
+        ORDER BY published_at
+        "#,
+    )
+    .bind(repository_id)
+    .bind(start)
+    .bind(end)
+    .fetch_all(pool)
+    .await
+}
+
+/// List pull requests merged within a date range
+pub async fn list_pulls_merged_in_date_range(
+    pool: &DbPool,
+    repository_id: i64,
+    start: chrono::DateTime<Utc>,
+    end: chrono::DateTime<Utc>,
+) -> sqlx::Result<Vec<PullRequestRow>> {
+    sqlx::query_as::<_, PullRequestRow>(
+        r#"
+        SELECT * FROM pull_requests
+        WHERE repository_id = $1
+          AND merged_at BETWEEN $2 AND $3
+        ORDER BY merged_at
+        "#,
+    )
+    .bind(repository_id)
+    .bind(start)
+    .bind(end)
+    .fetch_all(pool)
+    .await
+}
+
+// =============================================================================
+// Release plan queries
+// =============================================================================
+
+/// List open milestones with due dates up to a forward date
+pub async fn list_open_milestones_with_due(
+    pool: &DbPool,
+    repository_id: i64,
+    forward_date: chrono::DateTime<Utc>,
+) -> sqlx::Result<Vec<MilestoneRow>> {
+    sqlx::query_as::<_, MilestoneRow>(
+        r#"
+        SELECT * FROM milestones
+        WHERE repository_id = $1
+          AND state = 'open'
+          AND due_on IS NOT NULL
+          AND due_on <= $2
+        ORDER BY due_on ASC
+        "#,
+    )
+    .bind(repository_id)
+    .bind(forward_date)
+    .fetch_all(pool)
+    .await
+}
+
+/// Count blocker/critical issues for a milestone
+pub async fn count_blocker_issues(
+    pool: &DbPool,
+    repository_id: i64,
+    milestone_id: i64,
+) -> sqlx::Result<i64> {
+    let row: (i64,) = sqlx::query_as(
+        r#"
+        SELECT COUNT(DISTINCT i.id) FROM issues i
+        JOIN issue_labels il ON il.issue_id = i.id
+        WHERE i.repository_id = $1
+          AND i.milestone_id = $2
+          AND i.state = 'open'
+          AND LOWER(il.label_name) IN ('blocker', 'critical')
+        "#,
+    )
+    .bind(repository_id)
+    .bind(milestone_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.0)
+}
+
+/// List releases published since a given date
+pub async fn list_recent_releases(
+    pool: &DbPool,
+    repository_id: i64,
+    since: chrono::DateTime<Utc>,
+) -> sqlx::Result<Vec<ReleaseRow>> {
+    sqlx::query_as::<_, ReleaseRow>(
+        r#"
+        SELECT * FROM releases
+        WHERE repository_id = $1
+          AND published_at >= $2
+        ORDER BY published_at DESC
+        "#,
+    )
+    .bind(repository_id)
+    .bind(since)
+    .fetch_all(pool)
+    .await
+}
+
 /// Check if data needs refresh based on sync time
 pub async fn needs_refresh(
     pool: &DbPool,

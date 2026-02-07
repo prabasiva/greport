@@ -365,6 +365,75 @@ export interface AggregateVelocityMetrics {
 export type AggregateIssueItem = Issue & { repository: string };
 export type AggregatePullItem = PullRequest & { repository: string };
 
+// Calendar types
+
+export type CalendarEventType =
+  | "issue_created"
+  | "issue_closed"
+  | "milestone_due"
+  | "milestone_closed"
+  | "release_published"
+  | "pr_merged";
+
+export interface CalendarEvent {
+  id: string;
+  event_type: CalendarEventType;
+  title: string;
+  date: string;
+  number?: number;
+  state?: string;
+  repository: string;
+  labels: string[];
+  milestone?: string;
+  url: string;
+}
+
+export interface CalendarSummary {
+  total_events: number;
+  by_type: Record<string, number>;
+}
+
+export interface CalendarData {
+  start_date: string;
+  end_date: string;
+  events: CalendarEvent[];
+  summary: CalendarSummary;
+}
+
+// Release Plan types
+
+export type ReleasePlanStatus = "on_track" | "at_risk" | "overdue";
+
+export interface UpcomingRelease {
+  milestone: Milestone;
+  repository: string;
+  progress_percent: number;
+  days_remaining: number;
+  blocker_count: number;
+  status: ReleasePlanStatus;
+}
+
+export interface RecentRelease {
+  release: Release;
+  repository: string;
+  release_type: "stable" | "prerelease" | "draft";
+}
+
+export interface TimelineEntry {
+  date: string;
+  entry_type: "release" | "milestone";
+  title: string;
+  repository: string;
+  is_future: boolean;
+  progress_percent?: number;
+}
+
+export interface ReleasePlan {
+  upcoming: UpcomingRelease[];
+  recent_releases: RecentRelease[];
+  timeline: TimelineEntry[];
+}
+
 // API Response wrappers
 
 export interface ApiResponse<T> {
