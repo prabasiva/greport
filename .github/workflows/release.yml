@@ -197,3 +197,15 @@ jobs:
             ghcr.io/${{ github.repository }}/greport-api:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Build and push Dashboard image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile.dashboard
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/greport-dashboard:${{ steps.version.outputs.VERSION }}
+            ghcr.io/${{ github.repository }}/greport-dashboard:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

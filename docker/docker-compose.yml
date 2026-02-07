@@ -6,8 +6,9 @@ services:
     ports:
       - "9423:9423"
     environment:
-      # Override database URL so 'localhost' in config.toml resolves to the db service
       - DATABASE_URL=postgres://greport:greport@db:5432/greport
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - RUST_LOG=${RUST_LOG:-info,tower_http=debug}
     volumes:
       - ~/.config/greport/config.toml:/home/greport/.config/greport/config.toml:ro
     depends_on:
@@ -15,11 +16,24 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  dashboard:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dashboard
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:9423}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
   db:
     image: postgres:16-alpine
     environment:
       - POSTGRES_USER=greport
-      - POSTGRES_PASSWORD=greport
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-greport}
       - POSTGRES_DB=greport
     volumes:
       - postgres_data:/var/lib/postgresql/data

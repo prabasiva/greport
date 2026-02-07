@@ -1,0 +1,31 @@
+[Unit]
+Description=greport API Server
+Documentation=https://github.com/owner/greport
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=greport
+Group=greport
+ExecStart=/opt/greport/bin/greport-api
+EnvironmentFile=/etc/greport/greport.env
+WorkingDirectory=/opt/greport
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/greport
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=greport-api
+
+[Install]
+WantedBy=multi-user.target
