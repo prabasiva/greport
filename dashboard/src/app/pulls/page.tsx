@@ -14,6 +14,7 @@ import { PieChartComponent } from "@/components/charts/pie-chart-component";
 import { PageLoading } from "@/components/shared/loading";
 import { ErrorDisplay, NoRepoSelected } from "@/components/shared/error-display";
 import { formatRelativeTime, formatHours } from "@/lib/utils";
+import { DetailPopover } from "@/components/shared/detail-popover";
 import type { PullRequest, AggregatePullItem } from "@/types/api";
 
 export default function PullsPage() {
@@ -31,6 +32,7 @@ function AggregatePullsView() {
   const [state, setState] = useState("all");
   const [days, setDays] = useState("all");
   const [page, setPage] = useState(1);
+  const [selectedPull, setSelectedPull] = useState<AggregatePullItem | null>(null);
   const perPage = 30;
 
   const filterParams: { state?: string; days?: number } = {};
@@ -211,6 +213,7 @@ function AggregatePullsView() {
           columns={columns}
           data={pulls}
           keyExtractor={(pr) => `${pr.repository}-${pr.id}`}
+          onRowClick={(item) => setSelectedPull(item)}
           emptyMessage="No pull requests found matching the filters"
         />
         {meta && <Pagination meta={meta} onPageChange={setPage} />}
@@ -288,6 +291,18 @@ function AggregatePullsView() {
           </div>
         </>
       )}
+
+      {selectedPull && (() => {
+        const parts = selectedPull.repository.split("/");
+        return (
+          <DetailPopover
+            item={selectedPull}
+            owner={parts[0]}
+            repo={parts[1]}
+            onClose={() => setSelectedPull(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -296,6 +311,7 @@ function PullsContent({ owner, repo }: { owner: string; repo: string }) {
   const [state, setState] = useState("open");
   const [days, setDays] = useState("all");
   const [page, setPage] = useState(1);
+  const [selectedPull, setSelectedPull] = useState<PullRequest | null>(null);
 
   const { data, error, isLoading } = usePulls(owner, repo, {
     state,
@@ -466,6 +482,7 @@ function PullsContent({ owner, repo }: { owner: string; repo: string }) {
           columns={columns}
           data={pulls}
           keyExtractor={(pr) => pr.id}
+          onRowClick={(item) => setSelectedPull(item)}
           emptyMessage="No pull requests found"
         />
         {meta && <Pagination meta={meta} onPageChange={setPage} />}
@@ -489,6 +506,15 @@ function PullsContent({ owner, repo }: { owner: string; repo: string }) {
           </div>
         )}
       </div>
+
+      {selectedPull && (
+        <DetailPopover
+          item={selectedPull}
+          owner={owner}
+          repo={repo}
+          onClose={() => setSelectedPull(null)}
+        />
+      )}
     </div>
   );
 }

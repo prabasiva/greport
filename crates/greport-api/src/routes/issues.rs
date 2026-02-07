@@ -59,7 +59,7 @@ pub async fn list_issues(
     }
 
     // Fallback: fetch from GitHub API
-    let repo_id = RepoId::new(owner, repo);
+    let repo_id = RepoId::new(owner.clone(), repo.clone());
 
     let issue_state = match query.state.as_deref() {
         Some("open") => IssueStateFilter::Open,
@@ -79,7 +79,13 @@ pub async fn list_issues(
         ..Default::default()
     };
 
-    let issues = state.github.list_issues(&repo_id, params).await?;
+    let issues = match state.github.list_issues(&repo_id, params).await {
+        Ok(data) => data,
+        Err(e) => {
+            tracing::warn!("Failed to fetch issues from GitHub for {}/{}: {}", owner, repo, e);
+            Vec::new()
+        }
+    };
     let total = issues.len() as u32;
 
     Ok(Json(PaginatedResponse::new(
@@ -107,11 +113,14 @@ pub async fn get_metrics(
     }
 
     // Fallback: GitHub API
-    let repo_id = RepoId::new(owner, repo);
-    let issues = state
-        .github
-        .list_issues(&repo_id, IssueParams::all())
-        .await?;
+    let repo_id = RepoId::new(owner.clone(), repo.clone());
+    let issues = match state.github.list_issues(&repo_id, IssueParams::all()).await {
+        Ok(data) => data,
+        Err(e) => {
+            tracing::warn!("Failed to fetch issue metrics from GitHub for {}/{}: {}", owner, repo, e);
+            Vec::new()
+        }
+    };
 
     let calculator = IssueMetricsCalculator::new(30);
     let metrics = calculator.calculate(&issues);
@@ -149,11 +158,14 @@ pub async fn get_velocity(
     }
 
     // Fallback: GitHub API
-    let repo_id = RepoId::new(owner, repo);
-    let issues = state
-        .github
-        .list_issues(&repo_id, IssueParams::all())
-        .await?;
+    let repo_id = RepoId::new(owner.clone(), repo.clone());
+    let issues = match state.github.list_issues(&repo_id, IssueParams::all()).await {
+        Ok(data) => data,
+        Err(e) => {
+            tracing::warn!("Failed to fetch velocity data from GitHub for {}/{}: {}", owner, repo, e);
+            Vec::new()
+        }
+    };
 
     let velocity = VelocityCalculator::calculate(&issues, period, last);
 
@@ -233,11 +245,14 @@ pub async fn get_stale(
     }
 
     // Fallback: GitHub API
-    let repo_id = RepoId::new(owner, repo);
-    let issues = state
-        .github
-        .list_issues(&repo_id, IssueParams::open())
-        .await?;
+    let repo_id = RepoId::new(owner.clone(), repo.clone());
+    let issues = match state.github.list_issues(&repo_id, IssueParams::open()).await {
+        Ok(data) => data,
+        Err(e) => {
+            tracing::warn!("Failed to fetch stale issues from GitHub for {}/{}: {}", owner, repo, e);
+            Vec::new()
+        }
+    };
     let stale: Vec<_> = issues.into_iter().filter(|i| i.is_stale(days)).collect();
 
     Ok(Json(ApiResponse::ok(stale)))

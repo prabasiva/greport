@@ -42,9 +42,20 @@ pub async fn list_releases(
     }
 
     // Fallback: GitHub API
-    let repo_id = RepoId::new(owner, repo);
+    let repo_id = RepoId::new(owner.clone(), repo.clone());
 
-    let releases = state.github.list_releases(&repo_id).await?;
+    let releases = match state.github.list_releases(&repo_id).await {
+        Ok(data) => data,
+        Err(e) => {
+            tracing::warn!(
+                "Failed to fetch releases from GitHub for {}/{}: {}",
+                owner,
+                repo,
+                e
+            );
+            Vec::new()
+        }
+    };
     let total = releases.len() as u32;
 
     Ok(Json(PaginatedResponse::new(

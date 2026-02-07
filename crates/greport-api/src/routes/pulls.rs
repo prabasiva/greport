@@ -53,7 +53,7 @@ pub async fn list_pulls(
     }
 
     // Fallback: GitHub API
-    let repo_id = RepoId::new(owner, repo);
+    let repo_id = RepoId::new(owner.clone(), repo.clone());
 
     let pr_state = match query.state.as_deref() {
         Some("open") => PullStateFilter::Open,
@@ -68,7 +68,13 @@ pub async fn list_pulls(
         ..Default::default()
     };
 
-    let prs = state.github.list_pulls(&repo_id, params).await?;
+    let prs = match state.github.list_pulls(&repo_id, params).await {
+        Ok(data) => data,
+        Err(e) => {
+            tracing::warn!("Failed to fetch pull requests from GitHub for {}/{}: {}", owner, repo, e);
+            Vec::new()
+        }
+    };
     let total = prs.len() as u32;
 
     Ok(Json(PaginatedResponse::new(
@@ -95,8 +101,14 @@ pub async fn get_metrics(
     }
 
     // Fallback: GitHub API
-    let repo_id = RepoId::new(owner, repo);
-    let prs = state.github.list_pulls(&repo_id, PullParams::all()).await?;
+    let repo_id = RepoId::new(owner.clone(), repo.clone());
+    let prs = match state.github.list_pulls(&repo_id, PullParams::all()).await {
+        Ok(data) => data,
+        Err(e) => {
+            tracing::warn!("Failed to fetch pull metrics from GitHub for {}/{}: {}", owner, repo, e);
+            Vec::new()
+        }
+    };
 
     let metrics = PullMetricsCalculator::calculate(&prs);
 

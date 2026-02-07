@@ -263,8 +263,15 @@ pub async fn get_calendar(
 
     let repo_name = format!("{}/{}", owner, repo);
 
-    let start_dt = Utc.from_utc_datetime(&start.and_hms_opt(0, 0, 0).unwrap());
-    let end_dt = Utc.from_utc_datetime(&end.and_hms_opt(23, 59, 59).unwrap());
+    let start_dt = Utc.from_utc_datetime(
+        &start
+            .and_hms_opt(0, 0, 0)
+            .ok_or_else(|| ApiError::BadRequest("Invalid start date".into()))?,
+    );
+    let end_dt = Utc.from_utc_datetime(
+        &end.and_hms_opt(23, 59, 59)
+            .ok_or_else(|| ApiError::BadRequest("Invalid end date".into()))?,
+    );
 
     // DB-first path
     if let Some(pool) = &state.db {
@@ -557,8 +564,15 @@ pub async fn get_aggregate_calendar(
         .unwrap_or(default_end);
     let types = parse_types(query.types.as_deref());
 
-    let start_dt = Utc.from_utc_datetime(&start.and_hms_opt(0, 0, 0).unwrap());
-    let end_dt = Utc.from_utc_datetime(&end.and_hms_opt(23, 59, 59).unwrap());
+    let start_dt = Utc.from_utc_datetime(
+        &start
+            .and_hms_opt(0, 0, 0)
+            .ok_or_else(|| ApiError::BadRequest("Invalid start date".into()))?,
+    );
+    let end_dt = Utc.from_utc_datetime(
+        &end.and_hms_opt(23, 59, 59)
+            .ok_or_else(|| ApiError::BadRequest("Invalid end date".into()))?,
+    );
 
     let tracked = greport_db::queries::list_tracked_repos(pool).await?;
     let mut all_events = Vec::new();
