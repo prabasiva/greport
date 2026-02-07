@@ -67,7 +67,6 @@ impl ApiConfig {
                 .unwrap_or(config.sla.resolution_time_hours),
         }
     }
-
 }
 
 impl AppState {
@@ -75,9 +74,9 @@ impl AppState {
     pub async fn with_core_config(core_config: greport_core::Config) -> anyhow::Result<Self> {
         tracing::debug!("Initializing application state");
 
-        let token = core_config
-            .github_token()
-            .map_err(|_| anyhow::anyhow!("GITHUB_TOKEN not set in environment or ~/.config/greport/config.toml"))?;
+        let token = core_config.github_token().map_err(|_| {
+            anyhow::anyhow!("GITHUB_TOKEN not set in environment or ~/.config/greport/config.toml")
+        })?;
         tracing::debug!("GitHub token loaded");
 
         let base_url = std::env::var("GITHUB_BASE_URL")
@@ -116,7 +115,10 @@ impl AppState {
                         Some(pool)
                     }
                     Err(e) => {
-                        tracing::warn!("Database connection failed: {}. Running without caching.", e);
+                        tracing::warn!(
+                            "Database connection failed: {}. Running without caching.",
+                            e
+                        );
                         None
                     }
                 }

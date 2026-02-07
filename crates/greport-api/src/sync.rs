@@ -47,9 +47,7 @@ pub async fn sync_repository(
     }
 
     // 3. Sync issues
-    let issues = github
-        .list_issues(&repo_id, IssueParams::all())
-        .await?;
+    let issues = github.list_issues(&repo_id, IssueParams::all()).await?;
     let issues_synced = issues.len();
     for issue in &issues {
         let input = issue_to_input(issue, db_repo_id);

@@ -221,8 +221,7 @@ pub async fn get_stale(
     if let Some(pool) = &state.db {
         if let Some(repo_db_id) = convert::get_repo_db_id(pool, &owner, &repo).await {
             if convert::has_synced_data(pool, repo_db_id, "issues").await {
-                let issues =
-                    convert::issues_from_db(pool, repo_db_id, Some("open"), None).await?;
+                let issues = convert::issues_from_db(pool, repo_db_id, Some("open"), None).await?;
                 let stale: Vec<_> = issues.into_iter().filter(|i| i.is_stale(days)).collect();
                 return Ok(Json(ApiResponse::ok(stale)));
             }
