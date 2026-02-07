@@ -746,3 +746,297 @@ pub async fn get_aggregate_calendar(
         summary,
     })))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Duration;
+    use greport_core::models::{Label, PullState, User};
+
+    fn make_issue(number: u64, title: &str, days_ago_created: i64, closed: bool) -> Issue {
+        let created_at = Utc::now() - Duration::days(days_ago_created);
+        Issue {
+            id: number as i64,
+            number,
+            title: title.to_string(),
+            body: None,
+            state: if closed {
+                IssueState::Closed
+            } else {
+                IssueState::Open
+            },
+            labels: vec![Label {
+                id: 1,
+                name: "bug".to_string(),
+                color: "ff0000".to_string(),
+                description: None,
+            }],
+            assignees: vec![],
+            milestone: None,
+            author: User::unknown(),
+            comments_count: 0,
+            created_at,
+            updated_at: created_at,
+            closed_at: if closed {
+                Some(Utc::now() - Duration::days(1))
+            } else {
+                None
+            },
+            closed_by: None,
+        }
+    }
+
+    fn make_milestone(number: u64, title: &str, due_days_from_now: i64, closed: bool) -> Milestone {
+        Milestone {
+            id: number as i64,
+            number,
+            title: title.to_string(),
+            description: None,
+            state: if closed {
+                MilestoneState::Closed
+            } else {
+                MilestoneState::Open
+            },
+            open_issues: 5,
+            closed_issues: 15,
+            due_on: Some(Utc::now() + Duration::days(due_days_from_now)),
+            created_at: Utc::now() - Duration::days(60),
+            closed_at: if closed {
+                Some(Utc::now() - Duration::days(1))
+            } else {
+                None
+            },
+        }
+    }
+
+    fn make_release(tag: &str, days_ago_published: i64) -> Release {
+        Release {
+            id: 1,
+            tag_name: tag.to_string(),
+            name: Some(format!("Release {}", tag)),
+            body: None,
+            draft: false,
+            prerelease: false,
+            author: User::unknown(),
+            created_at: Utc::now() - Duration::days(days_ago_published),
+            published_at: Some(Utc::now() - Duration::days(days_ago_published)),
+        }
+    }
+
+    fn make_merged_pr(number: u64, title: &str, days_ago_merged: i64) -> PullRequest {
+        let created = Utc::now() - Duration::days(days_ago_merged + 2);
+        PullRequest {
+            id: number as i64,
+            number,
+            title: title.to_string(),
+            body: None,
+            state: PullState::Closed,
+            draft: false,
+            author: User::unknown(),
+            labels: vec![],
+            milestone: None,
+            head_ref: "feature".to_string(),
+            base_ref: "main".to_string(),
+            merged: true,
+            merged_at: Some(Utc::now() - Duration::days(days_ago_merged)),
+            additions: 50,
+            deletions: 10,
+            changed_files: 3,
+            created_at: created,
+            updated_at: created,
+            closed_at: Some(Utc::now() - Duration::days(days_ago_merged)),
+        }
+    }
+
+    #[test]
+    fn test_parse_date_valid() {
+        let result = parse_date("2026-01-15");
+        assert!(result.is_some());
+        let d = result.unwrap();
+        assert_eq!(d.year(), 2026);
+        assert_eq!(d.month(), 1);
+        assert_eq!(d.day(), 15);
+    }
+
+    #[test]
+    fn test_parse_date_invalid() {
+        assert!(parse_date("not-a-date").is_none());
+        assert!(parse_date("2026-13-01").is_none());
+        assert!(parse_date("").is_none());
+    }
+
+    #[test]
+    fn test_default_date_range() {
+        let (start, end) = default_date_range();
+        let today = Utc::now().date_naive();
+        assert_eq!(start.day(), 1);
+        assert!(end > today);
+        let span = (end - start).num_days();
+        assert!((58..=93).contains(&span), "Span was {} days", span);
+    }
+
+    #[test]
+    fn test_parse_types_default() {
+        let types = parse_types(None);
+        assert_eq!(types, vec!["issues", "milestones", "releases", "pulls"]);
+    }
+
+    #[test]
+    fn test_parse_types_custom() {
+        let types = parse_types(Some("issues,releases"));
+        assert_eq!(types, vec!["issues", "releases"]);
+    }
+
+    #[test]
+    fn test_parse_types_with_whitespace() {
+        let types = parse_types(Some("issues , releases , pulls"));
+        assert_eq!(types, vec!["issues", "releases", "pulls"]);
+    }
+
+    #[test]
+    fn test_parse_types_single() {
+        let types = parse_types(Some("milestones"));
+        assert_eq!(types, vec!["milestones"]);
+    }
+
+    #[test]
+    fn test_build_calendar_events_issues() {
+        let start = (Utc::now() - Duration::days(30)).date_naive();
+        let end = (Utc::now() + Duration::days(30)).date_naive();
+        let types = vec!["issues".to_string()];
+        let issues = vec![make_issue(1, "Bug fix", 5, true)];
+        let events =
+            build_calendar_events(&issues, &[], &[], &[], "owner/repo", &types, start, end);
+        assert_eq!(events.len(), 2);
+        assert!(events
+            .iter()
+            .any(|e| e.event_type == CalendarEventType::IssueCreated));
+        assert!(events
+            .iter()
+            .any(|e| e.event_type == CalendarEventType::IssueClosed));
+        assert_eq!(events[0].repository, "owner/repo");
+        assert_eq!(events[0].labels, vec!["bug"]);
+    }
+
+    #[test]
+    fn test_build_calendar_events_milestones() {
+        let start = (Utc::now() - Duration::days(30)).date_naive();
+        let end = (Utc::now() + Duration::days(30)).date_naive();
+        let types = vec!["milestones".to_string()];
+        let milestones = vec![make_milestone(1, "v1.0", 15, false)];
+        let events =
+            build_calendar_events(&[], &milestones, &[], &[], "owner/repo", &types, start, end);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, CalendarEventType::MilestoneDue);
+        assert_eq!(events[0].title, "v1.0");
+    }
+
+    #[test]
+    fn test_build_calendar_events_releases() {
+        let start = (Utc::now() - Duration::days(30)).date_naive();
+        let end = (Utc::now() + Duration::days(30)).date_naive();
+        let types = vec!["releases".to_string()];
+        let releases = vec![make_release("v1.0.0", 5)];
+        let events =
+            build_calendar_events(&[], &[], &releases, &[], "owner/repo", &types, start, end);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, CalendarEventType::ReleasePublished);
+    }
+
+    #[test]
+    fn test_build_calendar_events_pulls() {
+        let start = (Utc::now() - Duration::days(30)).date_naive();
+        let end = (Utc::now() + Duration::days(30)).date_naive();
+        let types = vec!["pulls".to_string()];
+        let pulls = vec![make_merged_pr(10, "Add feature", 3)];
+        let events = build_calendar_events(&[], &[], &[], &pulls, "owner/repo", &types, start, end);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, CalendarEventType::PrMerged);
+        assert_eq!(events[0].number, Some(10));
+    }
+
+    #[test]
+    fn test_build_calendar_events_type_filtering() {
+        let start = (Utc::now() - Duration::days(30)).date_naive();
+        let end = (Utc::now() + Duration::days(30)).date_naive();
+        let types = vec!["releases".to_string()];
+        let issues = vec![make_issue(1, "Bug", 5, false)];
+        let releases = vec![make_release("v1.0.0", 5)];
+        let events = build_calendar_events(
+            &issues,
+            &[],
+            &releases,
+            &[],
+            "owner/repo",
+            &types,
+            start,
+            end,
+        );
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, CalendarEventType::ReleasePublished);
+    }
+
+    #[test]
+    fn test_build_calendar_events_date_filtering() {
+        let start = (Utc::now() - Duration::days(3)).date_naive();
+        let end = (Utc::now() + Duration::days(3)).date_naive();
+        let types = vec!["issues".to_string()];
+        let issues = vec![make_issue(1, "Old bug", 60, false)];
+        let events =
+            build_calendar_events(&issues, &[], &[], &[], "owner/repo", &types, start, end);
+        assert_eq!(events.len(), 0);
+    }
+
+    #[test]
+    fn test_compute_summary() {
+        let events = vec![
+            CalendarEvent {
+                id: "e1".to_string(),
+                event_type: CalendarEventType::IssueCreated,
+                title: "t1".to_string(),
+                date: Utc::now(),
+                number: Some(1),
+                state: None,
+                repository: "r".to_string(),
+                labels: vec![],
+                milestone: None,
+                url: String::new(),
+            },
+            CalendarEvent {
+                id: "e2".to_string(),
+                event_type: CalendarEventType::IssueCreated,
+                title: "t2".to_string(),
+                date: Utc::now(),
+                number: Some(2),
+                state: None,
+                repository: "r".to_string(),
+                labels: vec![],
+                milestone: None,
+                url: String::new(),
+            },
+            CalendarEvent {
+                id: "e3".to_string(),
+                event_type: CalendarEventType::ReleasePublished,
+                title: "t3".to_string(),
+                date: Utc::now(),
+                number: None,
+                state: None,
+                repository: "r".to_string(),
+                labels: vec![],
+                milestone: None,
+                url: String::new(),
+            },
+        ];
+        let summary = compute_summary(&events);
+        assert_eq!(summary.total_events, 3);
+        assert_eq!(summary.by_type["issue_created"], 2);
+        assert_eq!(summary.by_type["release_published"], 1);
+    }
+
+    #[test]
+    fn test_compute_summary_empty() {
+        let summary = compute_summary(&[]);
+        assert_eq!(summary.total_events, 0);
+        assert!(summary.by_type.is_empty());
+    }
+}

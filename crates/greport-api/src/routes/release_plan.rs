@@ -292,3 +292,89 @@ pub async fn get_aggregate_release_plan(
         timeline: all_timeline,
     })))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Duration;
+
+    fn make_release(tag: &str, draft: bool, prerelease: bool) -> Release {
+        Release {
+            id: 1,
+            tag_name: tag.to_string(),
+            name: Some(format!("Release {}", tag)),
+            body: None,
+            draft,
+            prerelease,
+            author: User::unknown(),
+            created_at: Utc::now(),
+            published_at: Some(Utc::now()),
+        }
+    }
+
+    #[test]
+    fn test_classify_release_stable() {
+        let release = make_release("v1.0.0", false, false);
+        assert_eq!(classify_release(&release), "stable");
+    }
+
+    #[test]
+    fn test_classify_release_prerelease() {
+        let release = make_release("v2.0.0-beta.1", false, true);
+        assert_eq!(classify_release(&release), "prerelease");
+    }
+
+    #[test]
+    fn test_classify_release_draft() {
+        let release = make_release("v3.0.0", true, false);
+        assert_eq!(classify_release(&release), "draft");
+    }
+
+    #[test]
+    fn test_classify_release_draft_takes_priority() {
+        let release = make_release("v3.0.0-rc1", true, true);
+        assert_eq!(classify_release(&release), "draft");
+    }
+
+    #[test]
+    fn test_compute_status_overdue() {
+        let past_due = Utc::now() - Duration::days(5);
+        assert_eq!(compute_status(past_due, 50.0), ReleasePlanStatus::Overdue);
+    }
+
+    #[test]
+    fn test_compute_status_overdue_even_with_high_progress() {
+        let past_due = Utc::now() - Duration::days(1);
+        assert_eq!(compute_status(past_due, 99.0), ReleasePlanStatus::Overdue);
+    }
+
+    #[test]
+    fn test_compute_status_at_risk() {
+        let due = Utc::now() + Duration::days(5);
+        assert_eq!(compute_status(due, 50.0), ReleasePlanStatus::AtRisk);
+    }
+
+    #[test]
+    fn test_compute_status_at_risk_boundary() {
+        let due = Utc::now() + Duration::days(7);
+        assert_eq!(compute_status(due, 74.0), ReleasePlanStatus::AtRisk);
+    }
+
+    #[test]
+    fn test_compute_status_on_track_high_progress_close_deadline() {
+        let due = Utc::now() + Duration::days(5);
+        assert_eq!(compute_status(due, 80.0), ReleasePlanStatus::OnTrack);
+    }
+
+    #[test]
+    fn test_compute_status_on_track_far_deadline() {
+        let due = Utc::now() + Duration::days(30);
+        assert_eq!(compute_status(due, 10.0), ReleasePlanStatus::OnTrack);
+    }
+
+    #[test]
+    fn test_compute_status_on_track_100_percent() {
+        let due = Utc::now() + Duration::days(1);
+        assert_eq!(compute_status(due, 100.0), ReleasePlanStatus::OnTrack);
+    }
+}
