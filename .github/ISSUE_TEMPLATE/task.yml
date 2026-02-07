@@ -1,0 +1,63 @@
+name: Task
+description: Track a development task or work item
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for planned work items, refactoring, or technical debt.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of greport does this relate to?
+      options:
+        - API (Rust backend)
+        - Dashboard (Next.js frontend)
+        - Database
+        - Sync (GitHub data sync)
+        - Docker / Deployment
+        - CI / Build
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the task and its goals.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: What needs to be true for this task to be considered done?
+      placeholder: |
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Implementation Notes
+      description: Any technical details, file references, or design considerations.
+    validations:
+      required: false
