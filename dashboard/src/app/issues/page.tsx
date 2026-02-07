@@ -12,6 +12,7 @@ import { MetricCard } from "@/components/shared/metric-card";
 import { PageLoading } from "@/components/shared/loading";
 import { ErrorDisplay, NoRepoSelected } from "@/components/shared/error-display";
 import { formatRelativeTime, formatDate, labelColor, exportToCsv, exportToJson, formatHours } from "@/lib/utils";
+import { DetailPopover } from "@/components/shared/detail-popover";
 import type { Issue, AggregateIssueItem } from "@/types/api";
 
 export default function IssuesPage() {
@@ -30,6 +31,7 @@ function AggregateIssuesView() {
   const [state, setState] = useState("all");
   const [days, setDays] = useState("all");
   const [page, setPage] = useState(1);
+  const [selectedIssue, setSelectedIssue] = useState<AggregateIssueItem | null>(null);
   const perPage = 30;
 
   const filterParams: { state?: string; days?: number } = {};
@@ -200,6 +202,7 @@ function AggregateIssuesView() {
           columns={columns}
           data={issues}
           keyExtractor={(i) => `${i.repository}-${i.id}`}
+          onRowClick={(item) => setSelectedIssue(item)}
           emptyMessage="No issues found matching the filters"
         />
         {meta && <Pagination meta={meta} onPageChange={setPage} />}
@@ -292,6 +295,18 @@ function AggregateIssuesView() {
           </div>
         </>
       )}
+
+      {selectedIssue && (() => {
+        const parts = selectedIssue.repository.split("/");
+        return (
+          <DetailPopover
+            item={selectedIssue}
+            owner={parts[0]}
+            repo={parts[1]}
+            onClose={() => setSelectedIssue(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -300,6 +315,7 @@ function IssuesContent({ owner, repo }: { owner: string; repo: string }) {
   const [state, setState] = useState("open");
   const [days, setDays] = useState("all");
   const [page, setPage] = useState(1);
+  const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const perPage = 30;
 
   const { data, error, isLoading } = useIssues(owner, repo, {
@@ -480,6 +496,7 @@ function IssuesContent({ owner, repo }: { owner: string; repo: string }) {
           columns={columns}
           data={issues}
           keyExtractor={(i) => i.id}
+          onRowClick={(item) => setSelectedIssue(item)}
           emptyMessage="No issues found matching the filters"
         />
         {meta && <Pagination meta={meta} onPageChange={setPage} />}
@@ -500,6 +517,15 @@ function IssuesContent({ owner, repo }: { owner: string; repo: string }) {
             color="#8b5cf6"
           />
         </div>
+      )}
+
+      {selectedIssue && (
+        <DetailPopover
+          item={selectedIssue}
+          owner={owner}
+          repo={repo}
+          onClose={() => setSelectedIssue(null)}
+        />
       )}
     </div>
   );
