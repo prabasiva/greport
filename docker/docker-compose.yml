@@ -5,6 +5,9 @@ services:
       dockerfile: docker/Dockerfile.api
     ports:
       - "9423:9423"
+    environment:
+      # Override database URL so 'localhost' in config.toml resolves to the db service
+      - DATABASE_URL=postgres://greport:greport@db:5432/greport
     volumes:
       - ~/.config/greport/config.toml:/home/greport/.config/greport/config.toml:ro
     depends_on:

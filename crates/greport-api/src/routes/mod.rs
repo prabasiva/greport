@@ -2,6 +2,7 @@
 
 pub mod aggregate;
 pub mod batch;
+pub mod calendar;
 pub mod contrib;
 pub mod health;
 pub mod issues;

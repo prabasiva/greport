@@ -365,6 +365,41 @@ export interface AggregateVelocityMetrics {
 export type AggregateIssueItem = Issue & { repository: string };
 export type AggregatePullItem = PullRequest & { repository: string };
 
+// Calendar types
+
+export type CalendarEventType =
+  | "issue_created"
+  | "issue_closed"
+  | "milestone_due"
+  | "milestone_closed"
+  | "release_published"
+  | "pr_merged";
+
+export interface CalendarEvent {
+  id: string;
+  event_type: CalendarEventType;
+  title: string;
+  date: string;
+  number?: number;
+  state?: string;
+  repository: string;
+  labels: string[];
+  milestone?: string;
+  url: string;
+}
+
+export interface CalendarSummary {
+  total_events: number;
+  by_type: Record<string, number>;
+}
+
+export interface CalendarData {
+  start_date: string;
+  end_date: string;
+  events: CalendarEvent[];
+  summary: CalendarSummary;
+}
+
 // API Response wrappers
 
 export interface ApiResponse<T> {

@@ -253,6 +253,21 @@ export function aggregateVelocityUrl(
   return `/api/v1/aggregate/velocity${buildQuery(params || {})}`;
 }
 
+// Calendar
+export function calendarUrl(
+  owner: string,
+  repo: string,
+  params?: { start_date?: string; end_date?: string; types?: string },
+): string {
+  return `/api/v1/repos/${owner}/${repo}/calendar${buildQuery(params || {})}`;
+}
+
+export function aggregateCalendarUrl(
+  params?: { start_date?: string; end_date?: string; types?: string },
+): string {
+  return `/api/v1/aggregate/calendar${buildQuery(params || {})}`;
+}
+
 // Re-export types for convenience
 export type {
   ApiResponse,
