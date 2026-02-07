@@ -102,7 +102,8 @@ pub async fn sync_repository(
                         )
                     })
                     .collect();
-                if let Err(e) = greport_db::queries::set_issue_labels(pool, issue.id, &labels).await {
+                if let Err(e) = greport_db::queries::set_issue_labels(pool, issue.id, &labels).await
+                {
                     tracing::warn!(repo = %full_name, issue = issue.number, error = ?e, "Failed to set issue labels");
                 }
 
@@ -112,7 +113,9 @@ pub async fn sync_repository(
                     .iter()
                     .map(|a| (a.id, a.login.as_str()))
                     .collect();
-                if let Err(e) = greport_db::queries::set_issue_assignees(pool, issue.id, &assignees).await {
+                if let Err(e) =
+                    greport_db::queries::set_issue_assignees(pool, issue.id, &assignees).await
+                {
                     tracing::warn!(repo = %full_name, issue = issue.number, error = ?e, "Failed to set issue assignees");
                 }
             }
