@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: greport-config
+  namespace: greport
+  labels:
+    app.kubernetes.io/name: greport
+    app.kubernetes.io/part-of: greport
+data:
+  RUST_LOG: "info,tower_http=debug"
+  API_HOST: "0.0.0.0"
+  API_PORT: "9423"
+  RATE_LIMIT_PER_MINUTE: "60"
+  CACHE_TTL_SECONDS: "300"
+  MAX_PAGE_SIZE: "100"
+  REQUIRE_AUTH: "false"
+  SLA_RESPONSE_HOURS: "24"
+  SLA_RESOLUTION_HOURS: "168"
+  DB_RUN_MIGRATIONS: "true"
+  DB_MAX_CONNECTIONS: "10"
