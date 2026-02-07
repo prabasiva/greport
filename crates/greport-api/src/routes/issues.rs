@@ -82,7 +82,12 @@ pub async fn list_issues(
     let issues = match state.github.list_issues(&repo_id, params).await {
         Ok(data) => data,
         Err(e) => {
-            tracing::warn!("Failed to fetch issues from GitHub for {}/{}: {}", owner, repo, e);
+            tracing::warn!(
+                "Failed to fetch issues from GitHub for {}/{}: {}",
+                owner,
+                repo,
+                e
+            );
             Vec::new()
         }
     };
@@ -117,7 +122,12 @@ pub async fn get_metrics(
     let issues = match state.github.list_issues(&repo_id, IssueParams::all()).await {
         Ok(data) => data,
         Err(e) => {
-            tracing::warn!("Failed to fetch issue metrics from GitHub for {}/{}: {}", owner, repo, e);
+            tracing::warn!(
+                "Failed to fetch issue metrics from GitHub for {}/{}: {}",
+                owner,
+                repo,
+                e
+            );
             Vec::new()
         }
     };
@@ -162,7 +172,12 @@ pub async fn get_velocity(
     let issues = match state.github.list_issues(&repo_id, IssueParams::all()).await {
         Ok(data) => data,
         Err(e) => {
-            tracing::warn!("Failed to fetch velocity data from GitHub for {}/{}: {}", owner, repo, e);
+            tracing::warn!(
+                "Failed to fetch velocity data from GitHub for {}/{}: {}",
+                owner,
+                repo,
+                e
+            );
             Vec::new()
         }
     };
@@ -246,10 +261,19 @@ pub async fn get_stale(
 
     // Fallback: GitHub API
     let repo_id = RepoId::new(owner.clone(), repo.clone());
-    let issues = match state.github.list_issues(&repo_id, IssueParams::open()).await {
+    let issues = match state
+        .github
+        .list_issues(&repo_id, IssueParams::open())
+        .await
+    {
         Ok(data) => data,
         Err(e) => {
-            tracing::warn!("Failed to fetch stale issues from GitHub for {}/{}: {}", owner, repo, e);
+            tracing::warn!(
+                "Failed to fetch stale issues from GitHub for {}/{}: {}",
+                owner,
+                repo,
+                e
+            );
             Vec::new()
         }
     };

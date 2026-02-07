@@ -71,7 +71,12 @@ pub async fn list_pulls(
     let prs = match state.github.list_pulls(&repo_id, params).await {
         Ok(data) => data,
         Err(e) => {
-            tracing::warn!("Failed to fetch pull requests from GitHub for {}/{}: {}", owner, repo, e);
+            tracing::warn!(
+                "Failed to fetch pull requests from GitHub for {}/{}: {}",
+                owner,
+                repo,
+                e
+            );
             Vec::new()
         }
     };
@@ -105,7 +110,12 @@ pub async fn get_metrics(
     let prs = match state.github.list_pulls(&repo_id, PullParams::all()).await {
         Ok(data) => data,
         Err(e) => {
-            tracing::warn!("Failed to fetch pull metrics from GitHub for {}/{}: {}", owner, repo, e);
+            tracing::warn!(
+                "Failed to fetch pull metrics from GitHub for {}/{}: {}",
+                owner,
+                repo,
+                e
+            );
             Vec::new()
         }
     };
