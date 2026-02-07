@@ -2,19 +2,161 @@
 
 import { useState } from "react";
 import { useRepo } from "@/hooks/use-repo";
-import { useVelocity, useBurndown } from "@/hooks/use-api";
+import { useVelocity, useBurndown, useAggregateVelocity } from "@/hooks/use-api";
 import { TrendChart } from "@/components/charts/trend-chart";
 import { BurndownChart } from "@/components/charts/burndown-chart";
+import { BarChartComponent } from "@/components/charts/bar-chart-component";
 import { MetricCard } from "@/components/shared/metric-card";
 import { PageLoading } from "@/components/shared/loading";
 import { ErrorDisplay, NoRepoSelected } from "@/components/shared/error-display";
 import { formatDate } from "@/lib/utils";
 import type { Period, Trend } from "@/types/api";
 
+
 export default function VelocityPage() {
-  const { owner, repo } = useRepo();
+  const { owner, repo, mode } = useRepo();
+
+  if (mode === "aggregate") {
+    return <AggregateVelocityView />;
+  }
+
   if (!owner || !repo) return <NoRepoSelected />;
   return <VelocityContent owner={owner} repo={repo} />;
+}
+
+function AggregateVelocityView() {
+  const [period, setPeriod] = useState<string>("week");
+  const [last, setLast] = useState(12);
+
+  const { data, error, isLoading } = useAggregateVelocity({ period, last });
+
+  if (isLoading) return <PageLoading />;
+  if (error) return <ErrorDisplay message={error.message} />;
+
+  const velocity = data?.data;
+  if (!velocity) return <PageLoading />;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+          Velocity
+        </h2>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          All Repositories
+        </p>
+      </div>
+
+      {/* Period Selector */}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+            Period
+          </label>
+          <select
+            value={period}
+            onChange={(e) => setPeriod(e.target.value)}
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+          >
+            <option value="day">Daily</option>
+            <option value="week">Weekly</option>
+            <option value="month">Monthly</option>
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+            Last
+          </label>
+          <select
+            value={last}
+            onChange={(e) => setLast(Number(e.target.value))}
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+          >
+            <option value={4}>4</option>
+            <option value={8}>8</option>
+            <option value={12}>12</option>
+            <option value={24}>24</option>
+            <option value={52}>52</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Summary Metrics */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <MetricCard
+          title="Combined Avg Opened"
+          value={`${velocity.combined_avg_opened.toFixed(1)}/${velocity.period}`}
+          trend={velocity.trend as Trend}
+          trendValue={velocity.trend}
+        />
+        <MetricCard
+          title="Combined Avg Closed"
+          value={`${velocity.combined_avg_closed.toFixed(1)}/${velocity.period}`}
+        />
+        <MetricCard
+          title="Trend"
+          value={velocity.trend}
+        />
+      </div>
+
+      {/* Per-Repository Velocity */}
+      {velocity.by_repository.length > 0 && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <h3 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+              Avg Opened per {velocity.period}
+            </h3>
+            <BarChartComponent
+              data={velocity.by_repository.map((r) => ({
+                name: r.repository.split("/").pop() || r.repository,
+                value: r.avg_opened,
+              }))}
+              color="#ef4444"
+            />
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <h3 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+              Avg Closed per {velocity.period}
+            </h3>
+            <BarChartComponent
+              data={velocity.by_repository.map((r) => ({
+                name: r.repository.split("/").pop() || r.repository,
+                value: r.avg_closed,
+              }))}
+              color="#22c55e"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Per-Repo Table */}
+      <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <h3 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+          Per-Repository Breakdown
+        </h3>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 dark:border-gray-700">
+                <th className="px-4 py-2 text-left font-medium text-gray-500">Repository</th>
+                <th className="px-4 py-2 text-right font-medium text-gray-500">Avg Opened</th>
+                <th className="px-4 py-2 text-right font-medium text-gray-500">Avg Closed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {velocity.by_repository.map((r) => (
+                <tr key={r.repository} className="border-b border-gray-100 dark:border-gray-800">
+                  <td className="px-4 py-2 font-medium text-gray-900 dark:text-white">{r.repository}</td>
+                  <td className="px-4 py-2 text-right text-gray-600 dark:text-gray-300">{r.avg_opened.toFixed(1)}</td>
+                  <td className="px-4 py-2 text-right text-gray-600 dark:text-gray-300">{r.avg_closed.toFixed(1)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function VelocityContent({ owner, repo }: { owner: string; repo: string }) {

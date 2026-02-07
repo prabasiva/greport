@@ -91,6 +91,15 @@ pub async fn add_repo(
     }
     let (owner, repo) = (parts[0], parts[1]);
 
+    // Enforce 5-repo limit
+    let existing = greport_db::queries::list_repositories(pool).await?;
+    let already_tracked = existing.iter().any(|r| r.full_name == body.full_name);
+    if !already_tracked && existing.len() >= 5 {
+        return Err(ApiError::BadRequest(
+            "Maximum 5 repositories allowed. Remove a repository before adding a new one.".into(),
+        ));
+    }
+
     // Sync the repository (this also upserts it into the DB)
     let result = sync::sync_repository(pool, &state.github, owner, repo).await?;
 

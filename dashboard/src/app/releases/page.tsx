@@ -10,13 +10,15 @@ import { formatDate, formatRelativeTime } from "@/lib/utils";
 import type { Release } from "@/types/api";
 
 export default function ReleasesPage() {
-  const { activeRepo, repos } = useRepos();
+  const { owner, repo, mode } = useRepo();
+  const { repos } = useRepos();
 
-  if (!activeRepo) {
+  if (mode === "aggregate") {
     return <AggregateReleasesView repos={repos} />;
   }
 
-  return <ReleasesContent owner={activeRepo.owner} repo={activeRepo.name} />;
+  if (!owner || !repo) return <NoRepoSelected />;
+  return <ReleasesContent owner={owner} repo={repo} />;
 }
 
 function AggregateReleasesView({ repos }: { repos: { owner: string; name: string; fullName: string }[] }) {

@@ -3,30 +3,36 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import { useRepo } from "@/hooks/use-repo";
-import { syncRepo } from "@/lib/api";
+import { useRepos } from "@/hooks/use-repos";
+import { syncRepo, batchSync } from "@/lib/api";
 
 export function Header() {
-  const { owner, repo, setRepo } = useRepo();
-  const [input, setInput] = useState(`${owner}/${repo}`);
-  const [editing, setEditing] = useState(false);
+  const { owner, repo, mode, setRepo, setMode } = useRepo();
+  const { repos } = useRepos();
   const [syncing, setSyncing] = useState(false);
   const { mutate } = useSWRConfig();
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const parts = input.split("/");
-    if (parts.length === 2 && parts[0] && parts[1]) {
-      setRepo(parts[0], parts[1]);
-      setEditing(false);
+  function handleRepoChange(value: string) {
+    if (value === "__aggregate__") {
+      setMode("aggregate");
+    } else {
+      const parts = value.split("/");
+      if (parts.length === 2 && parts[0] && parts[1]) {
+        setRepo(parts[0], parts[1]);
+        setMode("single");
+      }
     }
   }
 
   async function handleSync() {
-    if (!owner || !repo || syncing) return;
+    if (syncing) return;
     setSyncing(true);
     try {
-      await syncRepo(owner, repo);
-      // Invalidate all SWR caches so data is refetched from the API (now from DB)
+      if (mode === "aggregate") {
+        await batchSync();
+      } else if (owner && repo) {
+        await syncRepo(owner, repo);
+      }
       await mutate(() => true, undefined, { revalidate: true });
     } catch (err) {
       console.error("Sync failed:", err);
@@ -34,6 +40,8 @@ export function Header() {
       setSyncing(false);
     }
   }
+
+  const currentValue = mode === "aggregate" ? "__aggregate__" : (owner && repo ? `${owner}/${repo}` : "");
 
   return (
     <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm dark:border-gray-800 dark:bg-gray-950 sm:gap-x-6 sm:px-6 lg:px-8">
@@ -49,52 +57,34 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-x-4 lg:gap-x-6">
-          {editing ? (
-            <form onSubmit={handleSubmit} className="flex items-center gap-2">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="owner/repo"
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                autoFocus
-              />
-              <button
-                type="submit"
-                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
-              >
-                Set
-              </button>
-              <button
-                type="button"
-                onClick={() => { setEditing(false); setInput(`${owner}/${repo}`); }}
-                className="rounded-md px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-              >
-                Cancel
-              </button>
-            </form>
-          ) : (
-            <>
-              <button
-                onClick={() => setEditing(true)}
-                className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:hover:bg-gray-700"
-              >
-                <RepoIcon className="h-4 w-4 text-gray-500" />
-                {owner && repo ? `${owner}/${repo}` : "Select repository..."}
-              </button>
-              {owner && repo && (
-                <button
-                  onClick={handleSync}
-                  disabled={syncing}
-                  title="Sync data from GitHub"
-                  className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                >
-                  <RefreshIcon className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-                  {syncing ? "Syncing..." : "Refresh"}
-                </button>
+          <div className="flex items-center gap-2">
+            <RepoIcon className="h-4 w-4 text-gray-500" />
+            <select
+              value={currentValue}
+              onChange={(e) => handleRepoChange(e.target.value)}
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-50 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:hover:bg-gray-700"
+            >
+              <option value="__aggregate__">All Repositories</option>
+              {repos.map((r) => (
+                <option key={r.fullName} value={r.fullName}>
+                  {r.fullName}
+                </option>
+              ))}
+              {owner && repo && !repos.find((r) => r.fullName === `${owner}/${repo}`) && (
+                <option value={`${owner}/${repo}`}>{owner}/{repo}</option>
               )}
-            </>
-          )}
+            </select>
+          </div>
+
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            title={mode === "aggregate" ? "Sync all repositories" : "Sync data from GitHub"}
+            className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            <RefreshIcon className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Syncing..." : "Refresh"}
+          </button>
         </div>
       </div>
     </header>

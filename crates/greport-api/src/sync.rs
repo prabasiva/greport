@@ -48,66 +48,140 @@ pub async fn sync_repository(
     greport_db::queries::upsert_repository(pool, &repo_input).await?;
     let db_repo_id = repository.id;
 
-    // 2. Sync milestones
-    let milestones = github.list_milestones(&repo_id).await?;
-    let milestones_synced = milestones.len();
-    for ms in &milestones {
-        let input = milestone_to_input(ms, db_repo_id);
-        greport_db::queries::upsert_milestone(pool, &input).await?;
-    }
+    let mut warnings: Vec<String> = vec![];
+    let mut milestones_ok = false;
+    let mut issues_ok = false;
+    let mut pulls_ok = false;
+    let mut releases_ok = false;
 
-    // 3. Sync issues
-    let issues = github.list_issues(&repo_id, IssueParams::all()).await?;
-    let issues_synced = issues.len();
-    for issue in &issues {
-        let input = issue_to_input(issue, db_repo_id);
-        greport_db::queries::upsert_issue(pool, &input).await?;
+    // 2. Sync milestones (non-fatal)
+    let milestones_synced = match github.list_milestones(&repo_id).await {
+        Ok(milestones) => {
+            let count = milestones.len();
+            for ms in &milestones {
+                let input = milestone_to_input(ms, db_repo_id);
+                if let Err(e) = greport_db::queries::upsert_milestone(pool, &input).await {
+                    tracing::warn!(repo = %full_name, milestone = %ms.title, error = ?e, "Failed to upsert milestone");
+                }
+            }
+            milestones_ok = true;
+            count
+        }
+        Err(e) => {
+            let msg = format!("Milestones: {}", e);
+            tracing::warn!(repo = %full_name, error = ?e, "Failed to sync milestones, skipping");
+            warnings.push(msg);
+            0
+        }
+    };
 
-        // Sync labels
-        let labels: Vec<(i64, &str, Option<&str>)> = issue
-            .labels
-            .iter()
-            .map(|l| {
-                (
-                    l.id,
-                    l.name.as_str(),
-                    if l.color.is_empty() {
-                        None
-                    } else {
-                        Some(l.color.as_str())
-                    },
-                )
-            })
-            .collect();
-        greport_db::queries::set_issue_labels(pool, issue.id, &labels).await?;
+    // 3. Sync issues (non-fatal)
+    let issues_synced = match github.list_issues(&repo_id, IssueParams::all()).await {
+        Ok(issues) => {
+            let count = issues.len();
+            for issue in &issues {
+                let input = issue_to_input(issue, db_repo_id);
+                if let Err(e) = greport_db::queries::upsert_issue(pool, &input).await {
+                    tracing::warn!(repo = %full_name, issue = issue.number, error = ?e, "Failed to upsert issue");
+                    continue;
+                }
 
-        // Sync assignees
-        let assignees: Vec<(i64, &str)> = issue
-            .assignees
-            .iter()
-            .map(|a| (a.id, a.login.as_str()))
-            .collect();
-        greport_db::queries::set_issue_assignees(pool, issue.id, &assignees).await?;
-    }
+                // Sync labels
+                let labels: Vec<(i64, &str, Option<&str>)> = issue
+                    .labels
+                    .iter()
+                    .map(|l| {
+                        (
+                            l.id,
+                            l.name.as_str(),
+                            if l.color.is_empty() {
+                                None
+                            } else {
+                                Some(l.color.as_str())
+                            },
+                        )
+                    })
+                    .collect();
+                if let Err(e) = greport_db::queries::set_issue_labels(pool, issue.id, &labels).await
+                {
+                    tracing::warn!(repo = %full_name, issue = issue.number, error = ?e, "Failed to set issue labels");
+                }
 
-    // 4. Sync pull requests
-    let pulls = github.list_pulls(&repo_id, PullParams::all()).await?;
-    let pulls_synced = pulls.len();
-    for pr in &pulls {
-        let input = pull_to_input(pr, db_repo_id);
-        greport_db::queries::upsert_pull_request(pool, &input).await?;
-    }
+                // Sync assignees
+                let assignees: Vec<(i64, &str)> = issue
+                    .assignees
+                    .iter()
+                    .map(|a| (a.id, a.login.as_str()))
+                    .collect();
+                if let Err(e) =
+                    greport_db::queries::set_issue_assignees(pool, issue.id, &assignees).await
+                {
+                    tracing::warn!(repo = %full_name, issue = issue.number, error = ?e, "Failed to set issue assignees");
+                }
+            }
+            issues_ok = true;
+            count
+        }
+        Err(e) => {
+            let msg = format!("Issues: {}", e);
+            tracing::warn!(repo = %full_name, error = ?e, "Failed to sync issues, skipping");
+            warnings.push(msg);
+            0
+        }
+    };
 
-    // 5. Sync releases
-    let releases = github.list_releases(&repo_id).await?;
-    let releases_synced = releases.len();
-    for release in &releases {
-        let input = release_to_input(release, db_repo_id);
-        greport_db::queries::upsert_release(pool, &input).await?;
-    }
+    // 4. Sync pull requests (non-fatal)
+    let pulls_synced = match github.list_pulls(&repo_id, PullParams::all()).await {
+        Ok(pulls) => {
+            let count = pulls.len();
+            for pr in &pulls {
+                let input = pull_to_input(pr, db_repo_id);
+                if let Err(e) = greport_db::queries::upsert_pull_request(pool, &input).await {
+                    tracing::warn!(repo = %full_name, pr = pr.number, error = ?e, "Failed to upsert pull request");
+                }
+            }
+            pulls_ok = true;
+            count
+        }
+        Err(e) => {
+            let msg = format!("Pull requests: {}", e);
+            tracing::warn!(repo = %full_name, error = ?e, "Failed to sync pull requests, skipping");
+            warnings.push(msg);
+            0
+        }
+    };
 
-    // 6. Update sync status
-    greport_db::queries::upsert_sync_status(pool, db_repo_id, true, true, true, true).await?;
+    // 5. Sync releases (non-fatal)
+    let releases_synced = match github.list_releases(&repo_id).await {
+        Ok(releases) => {
+            let count = releases.len();
+            for release in &releases {
+                let input = release_to_input(release, db_repo_id);
+                if let Err(e) = greport_db::queries::upsert_release(pool, &input).await {
+                    tracing::warn!(repo = %full_name, tag = %release.tag_name, error = ?e, "Failed to upsert release");
+                }
+            }
+            releases_ok = true;
+            count
+        }
+        Err(e) => {
+            let msg = format!("Releases: {}", e);
+            tracing::warn!(repo = %full_name, error = ?e, "Failed to sync releases, skipping");
+            warnings.push(msg);
+            0
+        }
+    };
+
+    // 6. Update sync status (only mark synced for categories that succeeded)
+    greport_db::queries::upsert_sync_status(
+        pool,
+        db_repo_id,
+        issues_ok,
+        pulls_ok,
+        releases_ok,
+        milestones_ok,
+    )
+    .await?;
 
     let synced_at = Utc::now();
     tracing::info!(
@@ -116,6 +190,7 @@ pub async fn sync_repository(
         pulls = pulls_synced,
         releases = releases_synced,
         milestones = milestones_synced,
+        warnings = warnings.len(),
         "Sync complete"
     );
 
@@ -126,7 +201,7 @@ pub async fn sync_repository(
         releases_synced,
         milestones_synced,
         synced_at,
-        warnings: vec![],
+        warnings,
     })
 }
 
