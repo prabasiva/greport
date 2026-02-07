@@ -17,7 +17,12 @@ import { formatRelativeTime, formatHours } from "@/lib/utils";
 import type { PullRequest, AggregatePullItem } from "@/types/api";
 
 export default function PullsPage() {
-  const { owner, repo } = useRepo();
+  const { owner, repo, mode } = useRepo();
+
+  if (mode === "aggregate") {
+    return <AggregatePullsView />;
+  }
+
   if (!owner || !repo) return <NoRepoSelected />;
   return <PullsContent owner={owner} repo={repo} />;
 }

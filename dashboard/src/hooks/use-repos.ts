@@ -27,7 +27,7 @@ export interface RepoEntry {
 export function useRepos() {
   const { owner, repo } = useRepo();
 
-  const { data } = useSWR<ApiResponse<RepoSummary[]>>(
+  const { data, mutate } = useSWR<ApiResponse<RepoSummary[]>>(
     `${API_BASE}${reposUrl()}`,
     directFetcher,
     { revalidateOnFocus: false, dedupingInterval: 60000 },
@@ -42,5 +42,5 @@ export function useRepos() {
   const activeRepo =
     owner && repo ? { owner, name: repo } : null;
 
-  return { activeRepo, repos };
+  return { activeRepo, repos, mutate };
 }

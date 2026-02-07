@@ -13,13 +13,15 @@ import { formatRelativeTime } from "@/lib/utils";
 import type { SlaIssue } from "@/types/api";
 
 export default function SlaPage() {
-  const { activeRepo, repos } = useRepos();
+  const { owner, repo, mode } = useRepo();
+  const { repos } = useRepos();
 
-  if (!activeRepo) {
+  if (mode === "aggregate") {
     return <AggregateSlaView repos={repos} />;
   }
 
-  return <SlaContent owner={activeRepo.owner} repo={activeRepo.name} />;
+  if (!owner || !repo) return <NoRepoSelected />;
+  return <SlaContent owner={owner} repo={repo} />;
 }
 
 function AggregateSlaView({ repos }: { repos: { owner: string; name: string; fullName: string }[] }) {

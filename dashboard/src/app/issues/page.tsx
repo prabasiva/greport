@@ -15,7 +15,11 @@ import { formatRelativeTime, formatDate, labelColor, exportToCsv, exportToJson, 
 import type { Issue, AggregateIssueItem } from "@/types/api";
 
 export default function IssuesPage() {
-  const { owner, repo } = useRepo();
+  const { owner, repo, mode } = useRepo();
+
+  if (mode === "aggregate") {
+    return <AggregateIssuesView />;
+  }
 
   if (!owner || !repo) return <NoRepoSelected />;
 
