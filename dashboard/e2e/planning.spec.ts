@@ -7,19 +7,18 @@ test.describe("Planning page", () => {
     await expect(page.locator("aside")).toBeVisible();
   });
 
-  test("shows no-repo-selected state without a backend", async ({ page }) => {
+  test("shows planning heading", async ({ page }) => {
     await page.goto("/planning");
-    // Without a backend API and no repo selected, the page shows the empty state
+    // Default mode is aggregate, so the planning layout renders with heading
     await expect(
-      page.getByText("No repository selected"),
+      page.getByRole("heading", { name: "Planning" }),
     ).toBeVisible();
   });
 
-  test("shows prompt to select a repository", async ({ page }) => {
+  test("shows view switcher", async ({ page }) => {
     await page.goto("/planning");
-    await expect(
-      page.getByText("Select a repository using the selector in the header"),
-    ).toBeVisible();
+    await expect(page.getByText("Calendar View")).toBeVisible();
+    await expect(page.getByText("Release Plan")).toBeVisible();
   });
 
   test("can navigate from planning to settings", async ({ page }) => {

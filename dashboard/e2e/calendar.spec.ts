@@ -7,18 +7,18 @@ test.describe("Calendar page", () => {
     await expect(page.locator("aside")).toBeVisible();
   });
 
-  test("shows no-repo-selected state without a backend", async ({ page }) => {
+  test("shows calendar heading", async ({ page }) => {
     await page.goto("/calendar");
-    // Without a backend API and no repo selected, the page shows the empty state
+    // Default mode is aggregate, so the calendar layout renders with heading
     await expect(
-      page.getByText("No repository selected"),
+      page.getByRole("heading", { name: "Calendar" }),
     ).toBeVisible();
   });
 
-  test("shows prompt to select a repository", async ({ page }) => {
+  test("shows aggregate subtitle", async ({ page }) => {
     await page.goto("/calendar");
     await expect(
-      page.getByText("Select a repository using the selector in the header"),
+      page.getByText("All repositories"),
     ).toBeVisible();
   });
 
