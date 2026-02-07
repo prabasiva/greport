@@ -14,6 +14,8 @@ import type {
   ContributorStats,
   SyncResult,
   ErrorResponse,
+  RepoSummary,
+  BatchSyncResult,
 } from "@/types/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9423";
@@ -80,6 +82,7 @@ export function issuesUrl(
     milestone?: string;
     page?: number;
     per_page?: number;
+    days?: number;
   },
 ): string {
   return `/api/v1/repos/${owner}/${repo}/issues${buildQuery(params || {})}`;
@@ -117,7 +120,7 @@ export function staleIssuesUrl(
 export function pullsUrl(
   owner: string,
   repo: string,
-  params?: { state?: string; page?: number; per_page?: number },
+  params?: { state?: string; page?: number; per_page?: number; days?: number },
 ): string {
   return `/api/v1/repos/${owner}/${repo}/pulls${buildQuery(params || {})}`;
 }
@@ -182,6 +185,72 @@ export async function syncRepo(
   return apiFetch<ApiResponse<SyncResult>>(syncUrl(owner, repo), {
     method: "POST",
   });
+}
+
+// Repository management
+export function reposUrl(): string {
+  return "/api/v1/repos";
+}
+
+export async function fetchRepos(): Promise<ApiResponse<RepoSummary[]>> {
+  return apiFetch<ApiResponse<RepoSummary[]>>(reposUrl());
+}
+
+export async function addTrackedRepo(
+  fullName: string,
+): Promise<ApiResponse<RepoSummary>> {
+  return apiFetch<ApiResponse<RepoSummary>>(reposUrl(), {
+    method: "POST",
+    body: JSON.stringify({ full_name: fullName }),
+  });
+}
+
+export async function removeTrackedRepo(
+  owner: string,
+  repo: string,
+): Promise<void> {
+  await apiFetch<void>(`/api/v1/repos/${owner}/${repo}`, {
+    method: "DELETE",
+  });
+}
+
+// Batch sync
+export function batchSyncUrl(): string {
+  return "/api/v1/sync";
+}
+
+export async function batchSync(): Promise<ApiResponse<BatchSyncResult>> {
+  return apiFetch<ApiResponse<BatchSyncResult>>(batchSyncUrl(), {
+    method: "POST",
+  });
+}
+
+// Aggregate lists
+export function aggregateIssuesUrl(params?: { state?: string; days?: number; page?: number; per_page?: number }): string {
+  return `/api/v1/aggregate/issues${buildQuery(params || {})}`;
+}
+
+export function aggregatePullsUrl(params?: { state?: string; days?: number; page?: number; per_page?: number }): string {
+  return `/api/v1/aggregate/pulls${buildQuery(params || {})}`;
+}
+
+// Aggregate metrics
+export function aggregateIssueMetricsUrl(params?: { state?: string; days?: number }): string {
+  return `/api/v1/aggregate/issues/metrics${buildQuery(params || {})}`;
+}
+
+export function aggregatePullMetricsUrl(params?: { state?: string; days?: number }): string {
+  return `/api/v1/aggregate/pulls/metrics${buildQuery(params || {})}`;
+}
+
+export function aggregateContributorsUrl(): string {
+  return "/api/v1/aggregate/contributors";
+}
+
+export function aggregateVelocityUrl(
+  params?: { period?: string; last?: number },
+): string {
+  return `/api/v1/aggregate/velocity${buildQuery(params || {})}`;
 }
 
 // Re-export types for convenience

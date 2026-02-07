@@ -35,6 +35,11 @@ pub async fn list_repositories(pool: &DbPool) -> sqlx::Result<Vec<RepositoryRow>
         .await
 }
 
+/// List tracked repositories (alias for list_repositories)
+pub async fn list_tracked_repos(pool: &DbPool) -> sqlx::Result<Vec<RepositoryRow>> {
+    list_repositories(pool).await
+}
+
 /// Upsert repository
 pub async fn upsert_repository(pool: &DbPool, input: &RepositoryInput) -> sqlx::Result<()> {
     sqlx::query(

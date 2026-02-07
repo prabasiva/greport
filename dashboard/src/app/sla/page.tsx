@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRepo } from "@/hooks/use-repo";
+import { useRepos } from "@/hooks/use-repos";
 import { useSla } from "@/hooks/use-api";
 import { MetricCard } from "@/components/shared/metric-card";
 import { DataTable, type Column } from "@/components/shared/data-table";
@@ -12,9 +13,48 @@ import { formatRelativeTime } from "@/lib/utils";
 import type { SlaIssue } from "@/types/api";
 
 export default function SlaPage() {
-  const { owner, repo } = useRepo();
-  if (!owner || !repo) return <NoRepoSelected />;
-  return <SlaContent owner={owner} repo={repo} />;
+  const { activeRepo, repos } = useRepos();
+
+  if (!activeRepo) {
+    return <AggregateSlaView repos={repos} />;
+  }
+
+  return <SlaContent owner={activeRepo.owner} repo={activeRepo.name} />;
+}
+
+function AggregateSlaView({ repos }: { repos: { owner: string; name: string; fullName: string }[] }) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+          SLA Compliance
+        </h2>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          All repositories
+        </p>
+      </div>
+      {repos.length === 0 ? (
+        <div className="py-12 text-center text-sm text-gray-500">
+          No repositories tracked. Add a repository to see SLA reports.
+        </div>
+      ) : (
+        repos.map((repo) => (
+          <RepoSlaSection key={repo.fullName} owner={repo.owner} name={repo.name} fullName={repo.fullName} />
+        ))
+      )}
+    </div>
+  );
+}
+
+function RepoSlaSection({ owner, name, fullName }: { owner: string; name: string; fullName: string }) {
+  return (
+    <div className="space-y-3">
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2">
+        {fullName}
+      </h3>
+      <SlaContent owner={owner} repo={name} />
+    </div>
+  );
 }
 
 function SlaContent({ owner, repo }: { owner: string; repo: string }) {

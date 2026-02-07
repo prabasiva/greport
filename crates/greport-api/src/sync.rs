@@ -21,6 +21,8 @@ pub struct SyncResult {
     pub releases_synced: usize,
     pub milestones_synced: usize,
     pub synced_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 /// Sync all data for a repository from GitHub into the database.
@@ -32,8 +34,16 @@ pub async fn sync_repository(
 ) -> Result<SyncResult, crate::error::ApiError> {
     let repo_id = RepoId::new(owner.to_string(), repo.to_string());
 
-    // 1. Sync repository metadata
-    let repository = github.get_repository(&repo_id).await?;
+    let full_name = format!("{}/{}", owner, repo);
+
+    // 1. Sync repository metadata (required - fail if this doesn't work)
+    let repository = github.get_repository(&repo_id).await.map_err(|e| {
+        tracing::error!(repo = %full_name, error = ?e, "Failed to fetch repository info");
+        crate::error::ApiError::BadRequest(format!(
+            "Cannot access repository '{}': {}",
+            full_name, e
+        ))
+    })?;
     let repo_input = repo_to_input(&repository);
     greport_db::queries::upsert_repository(pool, &repo_input).await?;
     let db_repo_id = repository.id;
@@ -116,6 +126,7 @@ pub async fn sync_repository(
         releases_synced,
         milestones_synced,
         synced_at,
+        warnings: vec![],
     })
 }
 
