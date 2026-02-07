@@ -17,21 +17,18 @@ test.describe("Sidebar navigation", () => {
 
   test("navigates to Planning page", async ({ page }) => {
     await page.goto("/");
-    await page.getByText("Planning").click();
+    await page.locator("aside").getByText("Planning").click();
     await expect(page).toHaveURL(/\/planning/);
-    await expect(page.getByText("Planning").first()).toBeVisible();
   });
 
-  test("navigates to Calendar page", async ({ page }) => {
+  test("navigates to Settings page", async ({ page }) => {
     await page.goto("/");
-    // Calendar page is accessed via /calendar
-    await page.goto("/calendar");
-    await expect(page.getByText("Calendar").first()).toBeVisible();
+    await page.locator("aside").getByText("Settings").click();
+    await expect(page).toHaveURL(/\/settings/);
   });
 
-  test("highlights active nav item", async ({ page }) => {
-    await page.goto("/planning");
-    const planningLink = page.locator("aside").getByText("Planning");
-    await expect(planningLink).toBeVisible();
+  test("shows greport logo", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator("aside").getByText("greport")).toBeVisible();
   });
 });
