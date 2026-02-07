@@ -4,6 +4,7 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
+use chrono::Utc;
 use serde::Deserialize;
 
 use crate::convert;
@@ -25,6 +26,7 @@ pub struct ListIssuesQuery {
     milestone: Option<String>,
     page: Option<u32>,
     per_page: Option<u32>,
+    days: Option<i64>,
 }
 
 pub async fn list_issues(
@@ -35,22 +37,24 @@ pub async fn list_issues(
     // DB-first: try to serve from database
     if let Some(pool) = &state.db {
         if let Some(repo_db_id) = convert::get_repo_db_id(pool, &owner, &repo).await {
-            if convert::has_synced_data(pool, repo_db_id, "issues").await {
-                let db_state = match query.state.as_deref() {
-                    Some("open") => Some("open"),
-                    Some("closed") => Some("closed"),
-                    Some("all") | None => None,
-                    _ => Some("open"),
-                };
-                let issues = convert::issues_from_db(pool, repo_db_id, db_state, None).await?;
-                let total = issues.len() as u32;
-                return Ok(Json(PaginatedResponse::new(
-                    issues,
-                    query.page.unwrap_or(1),
-                    query.per_page.unwrap_or(30),
-                    total,
-                )));
+            let db_state = match query.state.as_deref() {
+                Some("open") => Some("open"),
+                Some("closed") => Some("closed"),
+                Some("all") | None => None,
+                _ => Some("open"),
+            };
+            let mut issues = convert::issues_from_db(pool, repo_db_id, db_state, None).await?;
+            if let Some(d) = query.days {
+                let cutoff = Utc::now() - chrono::Duration::days(d);
+                issues.retain(|i| i.created_at >= cutoff);
             }
+            let total = issues.len() as u32;
+            return Ok(Json(PaginatedResponse::new(
+                issues,
+                query.page.unwrap_or(1),
+                query.per_page.unwrap_or(30),
+                total,
+            )));
         }
     }
 

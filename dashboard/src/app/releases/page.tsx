@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRepo } from "@/hooks/use-repo";
+import { useRepos } from "@/hooks/use-repos";
 import { useReleases, useReleaseNotes } from "@/hooks/use-api";
 import { PageLoading } from "@/components/shared/loading";
 import { ErrorDisplay, NoRepoSelected } from "@/components/shared/error-display";
@@ -9,9 +10,61 @@ import { formatDate, formatRelativeTime } from "@/lib/utils";
 import type { Release } from "@/types/api";
 
 export default function ReleasesPage() {
-  const { owner, repo } = useRepo();
-  if (!owner || !repo) return <NoRepoSelected />;
-  return <ReleasesContent owner={owner} repo={repo} />;
+  const { activeRepo, repos } = useRepos();
+
+  if (!activeRepo) {
+    return <AggregateReleasesView repos={repos} />;
+  }
+
+  return <ReleasesContent owner={activeRepo.owner} repo={activeRepo.name} />;
+}
+
+function AggregateReleasesView({ repos }: { repos: { owner: string; name: string; fullName: string }[] }) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+          Releases
+        </h2>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          All repositories
+        </p>
+      </div>
+      {repos.length === 0 ? (
+        <div className="py-12 text-center text-sm text-gray-500">
+          No repositories tracked. Add a repository to see releases.
+        </div>
+      ) : (
+        repos.map((repo) => (
+          <RepoReleasesSection key={repo.fullName} owner={repo.owner} name={repo.name} fullName={repo.fullName} />
+        ))
+      )}
+    </div>
+  );
+}
+
+function RepoReleasesSection({ owner, name, fullName }: { owner: string; name: string; fullName: string }) {
+  const { data, error, isLoading } = useReleases(owner, name, { per_page: 5 });
+
+  if (isLoading) return null;
+  if (error) return null;
+
+  const releases = data?.data || [];
+  if (releases.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2">
+        {fullName}
+        <span className="ml-2 text-sm font-normal text-gray-500">
+          {releases.length} release{releases.length !== 1 ? "s" : ""}
+        </span>
+      </h3>
+      {releases.map((release, index) => (
+        <ReleaseCard key={release.id} release={release} isLatest={index === 0} />
+      ))}
+    </div>
+  );
 }
 
 function ReleasesContent({ owner, repo }: { owner: string; repo: string }) {

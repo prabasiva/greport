@@ -249,7 +249,121 @@ export interface SyncResult {
   releases_synced: number;
   milestones_synced: number;
   synced_at: string;
+  warnings?: string[];
 }
+
+// Multi-repo types
+
+export interface SyncStatusSummary {
+  issues_synced: boolean;
+  pulls_synced: boolean;
+  releases_synced: boolean;
+  milestones_synced: boolean;
+  last_synced_at?: string;
+}
+
+export interface RepoSummary {
+  owner: string;
+  name: string;
+  full_name: string;
+  description?: string;
+  sync_status?: SyncStatusSummary;
+}
+
+export interface RepoSyncResult {
+  repository: string;
+  success: boolean;
+  issues_synced?: number;
+  pulls_synced?: number;
+  releases_synced?: number;
+  milestones_synced?: number;
+  error?: string;
+  warnings?: string[];
+}
+
+export interface BatchSyncResult {
+  results: RepoSyncResult[];
+  total_repos: number;
+  successful: number;
+  failed: number;
+  synced_at: string;
+}
+
+// Aggregate metrics
+
+export interface RepoIssueMetrics {
+  repository: string;
+  total: number;
+  open: number;
+  closed: number;
+  avg_time_to_close_hours?: number;
+  stale_count: number;
+}
+
+export interface IssueMetricsTotals {
+  total: number;
+  open: number;
+  closed: number;
+  avg_time_to_close_hours?: number;
+  stale_count: number;
+}
+
+export interface AggregateIssueMetrics {
+  by_repository: RepoIssueMetrics[];
+  totals: IssueMetricsTotals;
+  by_label: Record<string, number>;
+  by_assignee: Record<string, number>;
+  age_distribution: AgeBucket[];
+}
+
+export interface RepoPullMetrics {
+  repository: string;
+  total: number;
+  open: number;
+  merged: number;
+  avg_time_to_merge_hours?: number;
+}
+
+export interface PullMetricsTotals {
+  total: number;
+  open: number;
+  merged: number;
+  avg_time_to_merge_hours?: number;
+}
+
+export interface AggregatePullMetrics {
+  by_repository: RepoPullMetrics[];
+  totals: PullMetricsTotals;
+  by_size: Record<string, number>;
+  by_author: Record<string, number>;
+}
+
+export interface AggregateContributorStats {
+  login: string;
+  repositories: string[];
+  total_issues_created: number;
+  total_prs_created: number;
+  total_prs_merged: number;
+}
+
+export interface RepoVelocityEntry {
+  repository: string;
+  avg_opened: number;
+  avg_closed: number;
+}
+
+export interface AggregateVelocityMetrics {
+  period: string;
+  by_repository: RepoVelocityEntry[];
+  combined_avg_opened: number;
+  combined_avg_closed: number;
+  trend: string;
+}
+
+// Aggregate list item types (issue/pull with repository field via serde flatten)
+
+export type AggregateIssueItem = Issue & { repository: string };
+export type AggregatePullItem = PullRequest & { repository: string };
 
 // API Response wrappers
 

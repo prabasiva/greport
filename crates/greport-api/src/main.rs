@@ -123,6 +123,43 @@ fn build_router(state: AppState) -> Router {
             "/repos/{owner}/{repo}/sync",
             axum::routing::post(routes::sync::sync_repo),
         )
+        // Repository management
+        .route(
+            "/repos",
+            axum::routing::get(routes::repos::list_repos).post(routes::repos::add_repo),
+        )
+        .route(
+            "/repos/{owner}/{repo}",
+            axum::routing::delete(routes::repos::remove_repo),
+        )
+        // Batch sync (all tracked repos)
+        .route("/sync", axum::routing::post(routes::batch::batch_sync))
+        // Aggregate lists
+        .route(
+            "/aggregate/issues",
+            axum::routing::get(routes::aggregate::aggregate_issues_list),
+        )
+        .route(
+            "/aggregate/pulls",
+            axum::routing::get(routes::aggregate::aggregate_pulls_list),
+        )
+        // Aggregate metrics
+        .route(
+            "/aggregate/issues/metrics",
+            axum::routing::get(routes::aggregate::aggregate_issue_metrics),
+        )
+        .route(
+            "/aggregate/pulls/metrics",
+            axum::routing::get(routes::aggregate::aggregate_pull_metrics),
+        )
+        .route(
+            "/aggregate/contributors",
+            axum::routing::get(routes::aggregate::aggregate_contributors),
+        )
+        .route(
+            "/aggregate/velocity",
+            axum::routing::get(routes::aggregate::aggregate_velocity),
+        )
         // Apply middleware in reverse order (last added runs first)
         .layer(middleware::from_fn_with_state(
             state.clone(),

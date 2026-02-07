@@ -37,6 +37,19 @@ struct ErrorBody {
     message: String,
 }
 
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ApiError::NotFound(msg) => write!(f, "{msg}"),
+            ApiError::BadRequest(msg) => write!(f, "{msg}"),
+            ApiError::Unauthorized => write!(f, "Invalid or missing authentication"),
+            ApiError::RateLimited => write!(f, "Rate limit exceeded"),
+            ApiError::Internal(msg) => write!(f, "{msg}"),
+            ApiError::GitHub(e) => write!(f, "{}", friendly_github_message(e)),
+        }
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, code, message) = match self {
@@ -55,7 +68,8 @@ impl IntoResponse for ApiError {
             ApiError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", msg),
             ApiError::GitHub(e) => {
                 tracing::error!("GitHub API error: {:?}", e);
-                (StatusCode::BAD_GATEWAY, "GITHUB_ERROR", e.to_string())
+                let message = friendly_github_message(&e);
+                (StatusCode::BAD_GATEWAY, "GITHUB_ERROR", message)
             }
         };
 
@@ -67,6 +81,27 @@ impl IntoResponse for ApiError {
         });
 
         (status, body).into_response()
+    }
+}
+
+/// Convert a raw GitHub/octocrab error into a user-friendly message.
+fn friendly_github_message(e: &greport_core::Error) -> String {
+    let raw = format!("{e}");
+    if raw.contains("404") || raw.contains("Not Found") {
+        "Repository not found. Check that the name is correct and your token has access.".into()
+    } else if raw.contains("403") || raw.contains("not accessible") {
+        "Access denied. Your GitHub token does not have permission to access this resource.".into()
+    } else if raw.contains("401") || raw.contains("Unauthorized") || raw.contains("Bad credentials")
+    {
+        "Authentication failed. Check that your GitHub token is valid and not expired.".into()
+    } else if raw.contains("rate limit") || raw.contains("429") {
+        "GitHub API rate limit exceeded. Wait a few minutes and try again.".into()
+    } else if raw.contains("timeout") || raw.contains("timed out") {
+        "Request to GitHub timed out. Check your network connection and try again.".into()
+    } else if raw.contains("DNS") || raw.contains("resolve") {
+        "Could not reach GitHub. Check your network connection and DNS settings.".into()
+    } else {
+        format!("GitHub API error: {raw}")
     }
 }
 

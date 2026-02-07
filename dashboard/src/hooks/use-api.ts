@@ -13,6 +13,12 @@ import {
   releaseNotesUrl,
   slaUrl,
   contributorsUrl,
+  aggregateIssuesUrl,
+  aggregatePullsUrl,
+  aggregateIssueMetricsUrl,
+  aggregatePullMetricsUrl,
+  aggregateContributorsUrl,
+  aggregateVelocityUrl,
 } from "@/lib/api";
 import type {
   ApiResponse,
@@ -27,6 +33,12 @@ import type {
   ReleaseNotes,
   SlaReportResponse,
   ContributorStats,
+  AggregateIssueItem,
+  AggregatePullItem,
+  AggregateIssueMetrics,
+  AggregatePullMetrics,
+  AggregateContributorStats,
+  AggregateVelocityMetrics,
 } from "@/types/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9423";
@@ -52,7 +64,7 @@ function useApi<T>(path: string | null) {
 export function useIssues(
   owner: string,
   repo: string,
-  params?: { state?: string; labels?: string; assignee?: string; milestone?: string; page?: number; per_page?: number },
+  params?: { state?: string; labels?: string; assignee?: string; milestone?: string; page?: number; per_page?: number; days?: number },
 ) {
   return useApi<PaginatedResponse<Issue>>(
     owner && repo ? issuesUrl(owner, repo, params) : null,
@@ -90,7 +102,7 @@ export function useStaleIssues(owner: string, repo: string, days?: number) {
 export function usePulls(
   owner: string,
   repo: string,
-  params?: { state?: string; page?: number; per_page?: number },
+  params?: { state?: string; page?: number; per_page?: number; days?: number },
 ) {
   return useApi<PaginatedResponse<PullRequest>>(
     owner && repo ? pullsUrl(owner, repo, params) : null,
@@ -143,5 +155,50 @@ export function useContributors(
 ) {
   return useApi<ApiResponse<ContributorStats[]>>(
     owner && repo ? contributorsUrl(owner, repo, params) : null,
+  );
+}
+
+
+// Aggregate hooks
+
+export function useAggregateIssues(
+  params?: { state?: string; days?: number; page?: number; per_page?: number },
+) {
+  return useApi<PaginatedResponse<AggregateIssueItem>>(
+    aggregateIssuesUrl(params),
+  );
+}
+
+export function useAggregatePulls(
+  params?: { state?: string; days?: number; page?: number; per_page?: number },
+) {
+  return useApi<PaginatedResponse<AggregatePullItem>>(
+    aggregatePullsUrl(params),
+  );
+}
+
+export function useAggregateIssueMetrics(params?: { state?: string; days?: number }) {
+  return useApi<ApiResponse<AggregateIssueMetrics>>(
+    aggregateIssueMetricsUrl(params),
+  );
+}
+
+export function useAggregatePullMetrics(params?: { state?: string; days?: number }) {
+  return useApi<ApiResponse<AggregatePullMetrics>>(
+    aggregatePullMetricsUrl(params),
+  );
+}
+
+export function useAggregateContributors() {
+  return useApi<ApiResponse<AggregateContributorStats[]>>(
+    aggregateContributorsUrl(),
+  );
+}
+
+export function useAggregateVelocity(
+  params?: { period?: string; last?: number },
+) {
+  return useApi<ApiResponse<AggregateVelocityMetrics>>(
+    aggregateVelocityUrl(params),
   );
 }
