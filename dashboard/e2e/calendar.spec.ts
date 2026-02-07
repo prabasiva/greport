@@ -18,7 +18,7 @@ test.describe("Calendar page", () => {
   test("shows aggregate subtitle", async ({ page }) => {
     await page.goto("/calendar");
     await expect(
-      page.getByText("All repositories"),
+      page.locator("main").getByText("All repositories"),
     ).toBeVisible();
   });
 
