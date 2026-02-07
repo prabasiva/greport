@@ -22,7 +22,10 @@ fn log_api_error(operation: &str, endpoint: &str, err: &octocrab::Error) {
     );
 
     match err {
-        octocrab::Error::GitHub { source, backtrace: _ } => {
+        octocrab::Error::GitHub {
+            source,
+            backtrace: _,
+        } => {
             error!(
                 status_code = %source.status_code,
                 message = %source.message,
@@ -33,7 +36,10 @@ fn log_api_error(operation: &str, endpoint: &str, err: &octocrab::Error) {
                 for (i, e) in errors.iter().enumerate() {
                     error!(
                         error_index = i,
-                        resource = e.get("resource").and_then(|v| v.as_str()).unwrap_or("unknown"),
+                        resource = e
+                            .get("resource")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown"),
                         field = e.get("field").and_then(|v| v.as_str()).unwrap_or("unknown"),
                         code = e.get("code").and_then(|v| v.as_str()).unwrap_or("unknown"),
                         "GitHub API error detail"
@@ -41,14 +47,20 @@ fn log_api_error(operation: &str, endpoint: &str, err: &octocrab::Error) {
                 }
             }
         }
-        octocrab::Error::Http { source, backtrace: _ } => {
+        octocrab::Error::Http {
+            source,
+            backtrace: _,
+        } => {
             error!(
                 error_type = "HTTP",
                 details = %source,
                 "HTTP transport error"
             );
         }
-        octocrab::Error::Serde { source, backtrace: _ } => {
+        octocrab::Error::Serde {
+            source,
+            backtrace: _,
+        } => {
             error!(
                 error_type = "Serde",
                 details = %source,
@@ -56,28 +68,40 @@ fn log_api_error(operation: &str, endpoint: &str, err: &octocrab::Error) {
             );
             warn!("This often indicates: 1) Invalid API URL, 2) Authentication failure, 3) Network proxy/firewall interference");
         }
-        octocrab::Error::InvalidHeaderValue { source, backtrace: _ } => {
+        octocrab::Error::InvalidHeaderValue {
+            source,
+            backtrace: _,
+        } => {
             error!(
                 error_type = "InvalidHeader",
                 details = %source,
                 "Invalid HTTP header value"
             );
         }
-        octocrab::Error::Uri { source, backtrace: _ } => {
+        octocrab::Error::Uri {
+            source,
+            backtrace: _,
+        } => {
             error!(
                 error_type = "URL",
                 details = %source,
                 "Invalid URL"
             );
         }
-        octocrab::Error::Service { source, backtrace: _ } => {
+        octocrab::Error::Service {
+            source,
+            backtrace: _,
+        } => {
             error!(
                 error_type = "Service",
                 details = %source,
                 "Service error"
             );
         }
-        octocrab::Error::Other { source, backtrace: _ } => {
+        octocrab::Error::Other {
+            source,
+            backtrace: _,
+        } => {
             error!(
                 error_type = "Other",
                 details = %source,
@@ -290,7 +314,10 @@ impl GitHubClient for OctocrabClient {
             .await
         {
             Ok(p) => {
-                debug!(repos_count = p.items.len(), "Fetched organization repositories");
+                debug!(
+                    repos_count = p.items.len(),
+                    "Fetched organization repositories"
+                );
                 p
             }
             Err(e) => {
@@ -482,7 +509,11 @@ impl GitHubClient for OctocrabClient {
             assignee: Option<octocrab::models::Author>,
         }
 
-        let events: Vec<ApiEvent> = match self.client.get::<Vec<ApiEvent>, _, _>(&route, None::<&()>).await {
+        let events: Vec<ApiEvent> = match self
+            .client
+            .get::<Vec<ApiEvent>, _, _>(&route, None::<&()>)
+            .await
+        {
             Ok(e) => {
                 debug!(events_count = e.len(), "Successfully fetched issue events");
                 e
@@ -505,7 +536,10 @@ impl GitHubClient for OctocrabClient {
             })
             .collect();
 
-        info!(total_events = result.len(), "Completed fetching issue events");
+        info!(
+            total_events = result.len(),
+            "Completed fetching issue events"
+        );
         Ok(result)
     }
 
@@ -518,24 +552,33 @@ impl GitHubClient for OctocrabClient {
         );
         info!(endpoint = %route, "Fetching milestones");
 
-        let milestones: Vec<octocrab::models::Milestone> =
-            match self.client.get::<Vec<octocrab::models::Milestone>, _, _>(&route, None::<&()>).await {
-                Ok(m) => {
-                    debug!(milestones_count = m.len(), "Successfully fetched milestones");
-                    m
-                }
-                Err(e) => {
-                    log_api_error("list_milestones", &route, &e);
-                    return Err(e.into());
-                }
-            };
+        let milestones: Vec<octocrab::models::Milestone> = match self
+            .client
+            .get::<Vec<octocrab::models::Milestone>, _, _>(&route, None::<&()>)
+            .await
+        {
+            Ok(m) => {
+                debug!(
+                    milestones_count = m.len(),
+                    "Successfully fetched milestones"
+                );
+                m
+            }
+            Err(e) => {
+                log_api_error("list_milestones", &route, &e);
+                return Err(e.into());
+            }
+        };
 
         let result: Vec<Milestone> = milestones
             .into_iter()
             .map(Self::convert_milestone)
             .collect();
 
-        info!(total_milestones = result.len(), "Completed fetching milestones");
+        info!(
+            total_milestones = result.len(),
+            "Completed fetching milestones"
+        );
         Ok(result)
     }
 
@@ -643,12 +686,7 @@ impl GitHubClient for OctocrabClient {
         let endpoint = format!("/repos/{}/{}/pulls/{}", repo.owner, repo.name, number);
         info!(endpoint = %endpoint, "Fetching single pull request");
 
-        let pr = match self
-            .client
-            .pulls(&repo.owner, &repo.name)
-            .get(number)
-            .await
-        {
+        let pr = match self.client.pulls(&repo.owner, &repo.name).get(number).await {
             Ok(p) => {
                 debug!(
                     pr_id = p.id.0,
@@ -717,7 +755,10 @@ impl GitHubClient for OctocrabClient {
 
     #[instrument(skip(self), fields(repo = %repo, pr_number = number))]
     async fn list_pull_reviews(&self, repo: &RepoId, number: u64) -> Result<Vec<Review>> {
-        let endpoint = format!("/repos/{}/{}/pulls/{}/reviews", repo.owner, repo.name, number);
+        let endpoint = format!(
+            "/repos/{}/{}/pulls/{}/reviews",
+            repo.owner, repo.name, number
+        );
         info!(endpoint = %endpoint, "Fetching pull request reviews");
 
         let reviews = match self
@@ -728,7 +769,10 @@ impl GitHubClient for OctocrabClient {
             .await
         {
             Ok(r) => {
-                debug!(reviews_count = r.items.len(), "Successfully fetched reviews");
+                debug!(
+                    reviews_count = r.items.len(),
+                    "Successfully fetched reviews"
+                );
                 r
             }
             Err(e) => {
@@ -768,7 +812,10 @@ impl GitHubClient for OctocrabClient {
             .await
         {
             Ok(r) => {
-                debug!(releases_count = r.items.len(), "Successfully fetched releases");
+                debug!(
+                    releases_count = r.items.len(),
+                    "Successfully fetched releases"
+                );
                 r
             }
             Err(e) => {

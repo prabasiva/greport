@@ -76,6 +76,43 @@ resolution_time_hours = 24
 [sla.priority.high]
 response_time_hours = 8
 resolution_time_hours = 72
+
+[database]
+# PostgreSQL connection URL (can also use DATABASE_URL env var)
+# url = "postgres://user:password@localhost:5432/greport"
+
+# Maximum connections in pool (default: 10)
+# max_connections = 10
+
+# Connection acquire timeout in seconds (default: 5)
+# acquire_timeout_secs = 5
+
+# Run migrations on startup (default: true)
+# run_migrations = true
+
+[server]
+# Bind host address (can also use API_HOST env var, default: 0.0.0.0)
+# host = "0.0.0.0"
+
+# Bind port (can also use API_PORT env var, default: 9423)
+# port = 9423
+
+# Rate limit: max requests per minute per client (default: 60)
+# rate_limit_per_minute = 60
+
+# Cache TTL in seconds for API responses (default: 300)
+# cache_ttl_seconds = 300
+
+# Maximum page size for paginated responses (default: 100)
+# max_page_size = 100
+
+# Require API key authentication (default: false)
+# require_auth = false
+
+[logging]
+# Log level filter (can also use RUST_LOG env var)
+# Examples: "info", "debug", "info,tower_http=debug"
+# level = "info"
 "#;
 
     std::fs::write(&path, default_config)?;

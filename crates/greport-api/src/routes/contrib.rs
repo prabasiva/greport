@@ -7,6 +7,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::convert;
 use crate::error::ApiError;
 use crate::response::ApiResponse;
 use crate::state::AppState;
@@ -31,13 +32,24 @@ pub async fn list_contributors(
     Path((owner, repo)): Path<(String, String)>,
     Query(query): Query<ContributorsQuery>,
 ) -> Result<Json<ApiResponse<Vec<ContributorStats>>>, ApiError> {
-    let repo_id = RepoId::new(owner, repo);
-
-    let issues = state
-        .github
-        .list_issues(&repo_id, IssueParams::all())
-        .await?;
-    let prs = state.github.list_pulls(&repo_id, PullParams::all()).await?;
+    // DB-first: needs both issues and pulls synced
+    let (issues, prs) = if let Some(pool) = &state.db {
+        if let Some(repo_db_id) = convert::get_repo_db_id(pool, &owner, &repo).await {
+            if convert::has_synced_data(pool, repo_db_id, "issues").await
+                && convert::has_synced_data(pool, repo_db_id, "pulls").await
+            {
+                let issues = convert::issues_from_db(pool, repo_db_id, None, None).await?;
+                let prs = convert::pulls_from_db(pool, repo_db_id, None, None).await?;
+                (issues, prs)
+            } else {
+                fetch_from_github(&state, &owner, &repo).await?
+            }
+        } else {
+            fetch_from_github(&state, &owner, &repo).await?
+        }
+    } else {
+        fetch_from_github(&state, &owner, &repo).await?
+    };
 
     let mut contributors: HashMap<String, ContributorStats> = HashMap::new();
 
@@ -79,4 +91,24 @@ pub async fn list_contributors(
     sorted.truncate(limit);
 
     Ok(Json(ApiResponse::ok(sorted)))
+}
+
+async fn fetch_from_github(
+    state: &AppState,
+    owner: &str,
+    repo: &str,
+) -> Result<
+    (
+        Vec<greport_core::models::Issue>,
+        Vec<greport_core::models::PullRequest>,
+    ),
+    crate::error::ApiError,
+> {
+    let repo_id = RepoId::new(owner.to_string(), repo.to_string());
+    let issues = state
+        .github
+        .list_issues(&repo_id, IssueParams::all())
+        .await?;
+    let prs = state.github.list_pulls(&repo_id, PullParams::all()).await?;
+    Ok((issues, prs))
 }

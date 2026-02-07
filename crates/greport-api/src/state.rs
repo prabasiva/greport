@@ -50,47 +50,38 @@ impl Default for ApiConfig {
 }
 
 impl ApiConfig {
-    /// Load config from environment
-    pub fn from_env() -> Self {
+    /// Load config with priority: env var > config.toml > defaults
+    pub fn from_core_config(config: &greport_core::Config) -> Self {
         Self {
-            rate_limit_per_minute: std::env::var("RATE_LIMIT_PER_MINUTE")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(60),
-            cache_ttl_seconds: std::env::var("CACHE_TTL_SECONDS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(300),
-            max_page_size: std::env::var("MAX_PAGE_SIZE")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(100),
-            require_auth: std::env::var("REQUIRE_AUTH")
-                .map(|v| v == "true" || v == "1")
-                .unwrap_or(false),
+            rate_limit_per_minute: config.rate_limit_per_minute(),
+            cache_ttl_seconds: config.cache_ttl_seconds(),
+            max_page_size: config.max_page_size(),
+            require_auth: config.require_auth(),
             sla_response_hours: std::env::var("SLA_RESPONSE_HOURS")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(24),
+                .unwrap_or(config.sla.response_time_hours),
             sla_resolution_hours: std::env::var("SLA_RESOLUTION_HOURS")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(168),
+                .unwrap_or(config.sla.resolution_time_hours),
         }
     }
 }
 
 impl AppState {
-    /// Create new application state
-    pub async fn new() -> anyhow::Result<Self> {
-        // Get GitHub token and optional base URL from environment
+    /// Create application state from a pre-loaded Config
+    pub async fn with_core_config(core_config: greport_core::Config) -> anyhow::Result<Self> {
         tracing::debug!("Initializing application state");
 
-        let token = std::env::var("GITHUB_TOKEN")
-            .map_err(|_| anyhow::anyhow!("GITHUB_TOKEN environment variable not set"))?;
-        tracing::debug!("GITHUB_TOKEN found in environment");
+        let token = core_config.github_token().map_err(|_| {
+            anyhow::anyhow!("GITHUB_TOKEN not set in environment or ~/.config/greport/config.toml")
+        })?;
+        tracing::debug!("GitHub token loaded");
 
-        let base_url = std::env::var("GITHUB_BASE_URL").ok();
+        let base_url = std::env::var("GITHUB_BASE_URL")
+            .ok()
+            .or(core_config.github.base_url.clone());
         if let Some(ref url) = base_url {
             tracing::info!(base_url = %url, "Using GitHub Enterprise base URL");
         } else {
@@ -100,7 +91,7 @@ impl AppState {
         let github = Arc::new(OctocrabClient::new(&token, base_url.as_deref())?);
         tracing::info!("GitHub client initialized");
 
-        let config = Arc::new(ApiConfig::from_env());
+        let config = Arc::new(ApiConfig::from_core_config(&core_config));
         tracing::debug!(
             rate_limit = config.rate_limit_per_minute,
             cache_ttl = config.cache_ttl_seconds,
@@ -110,13 +101,30 @@ impl AppState {
         let rate_limiter = Arc::new(RateLimiter::new(config.rate_limit_per_minute));
 
         // Try to connect to database (optional)
-        let db = match greport_db::create_pool().await {
-            Ok(pool) => {
-                tracing::info!("Connected to database");
-                Some(pool)
+        let db = match core_config.database_url() {
+            Some(url) => {
+                let db_config = greport_db::DbConfig {
+                    database_url: url,
+                    max_connections: core_config.db_max_connections(),
+                    acquire_timeout_secs: core_config.db_acquire_timeout_secs(),
+                    run_migrations: core_config.db_run_migrations(),
+                };
+                match greport_db::create_pool_with_config(&db_config).await {
+                    Ok(pool) => {
+                        tracing::info!("Connected to database");
+                        Some(pool)
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Database connection failed: {}. Running without caching.",
+                            e
+                        );
+                        None
+                    }
+                }
             }
-            Err(e) => {
-                tracing::warn!("Database not available: {}. Running without caching.", e);
+            None => {
+                tracing::info!("No DATABASE_URL configured. Running without database.");
                 None
             }
         };
@@ -124,21 +132,6 @@ impl AppState {
         Ok(Self {
             github,
             config,
-            db,
-            rate_limiter,
-        })
-    }
-
-    /// Create state with custom configuration
-    #[allow(dead_code)]
-    pub async fn with_config(config: ApiConfig) -> anyhow::Result<Self> {
-        let github = Arc::new(OctocrabClient::from_env()?);
-        let rate_limiter = Arc::new(RateLimiter::new(config.rate_limit_per_minute));
-        let db = greport_db::create_pool().await.ok();
-
-        Ok(Self {
-            github,
-            config: Arc::new(config),
             db,
             rate_limiter,
         })

@@ -1,11 +1,13 @@
 //! greport API Server
 
 mod auth;
+mod convert;
 mod error;
 mod rate_limit;
 mod response;
 mod routes;
 mod state;
+mod sync;
 
 use axum::{middleware, Router};
 use std::net::SocketAddr;
@@ -22,16 +24,19 @@ async fn main() -> anyhow::Result<()> {
     // Load .env file
     let _ = dotenvy::dotenv();
 
-    // Initialize tracing
+    // Load config early for logging and bind address
+    let core_config = greport_core::Config::load(None).unwrap_or_default();
+
+    // Initialize tracing (env var > config.toml > default)
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info,tower_http=debug".into()),
+            core_config.rust_log("info,tower_http=debug"),
         ))
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // Create application state
-    let state = AppState::new().await?;
+    // Create application state with pre-loaded config
+    let state = AppState::with_core_config(core_config.clone()).await?;
 
     // Start rate limiter cleanup task
     start_cleanup_task(Arc::clone(&state.rate_limiter));
@@ -39,12 +44,9 @@ async fn main() -> anyhow::Result<()> {
     // Build router with state
     let app = build_router(state);
 
-    // Get bind address
-    let host = std::env::var("API_HOST").unwrap_or_else(|_| "0.0.0.0".into());
-    let port: u16 = std::env::var("API_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(3000);
+    // Get bind address (env var > config.toml > default)
+    let host = core_config.api_host();
+    let port = core_config.api_port();
 
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
     tracing::info!("Starting server on {}", addr);
@@ -65,56 +67,61 @@ fn build_router(state: AppState) -> Router {
     let api_v1 = Router::new()
         // Issues
         .route(
-            "/repos/:owner/:repo/issues",
+            "/repos/{owner}/{repo}/issues",
             axum::routing::get(routes::issues::list_issues),
         )
         .route(
-            "/repos/:owner/:repo/issues/metrics",
+            "/repos/{owner}/{repo}/issues/metrics",
             axum::routing::get(routes::issues::get_metrics),
         )
         .route(
-            "/repos/:owner/:repo/issues/velocity",
+            "/repos/{owner}/{repo}/issues/velocity",
             axum::routing::get(routes::issues::get_velocity),
         )
         .route(
-            "/repos/:owner/:repo/issues/burndown",
+            "/repos/{owner}/{repo}/issues/burndown",
             axum::routing::get(routes::issues::get_burndown),
         )
         .route(
-            "/repos/:owner/:repo/issues/stale",
+            "/repos/{owner}/{repo}/issues/stale",
             axum::routing::get(routes::issues::get_stale),
         )
         // Pull Requests
         .route(
-            "/repos/:owner/:repo/pulls",
+            "/repos/{owner}/{repo}/pulls",
             axum::routing::get(routes::pulls::list_pulls),
         )
         .route(
-            "/repos/:owner/:repo/pulls/metrics",
+            "/repos/{owner}/{repo}/pulls/metrics",
             axum::routing::get(routes::pulls::get_metrics),
         )
         // Releases
         .route(
-            "/repos/:owner/:repo/releases",
+            "/repos/{owner}/{repo}/releases",
             axum::routing::get(routes::releases::list_releases),
         )
         .route(
-            "/repos/:owner/:repo/releases/notes",
+            "/repos/{owner}/{repo}/releases/notes",
             axum::routing::get(routes::releases::get_notes),
         )
         .route(
-            "/repos/:owner/:repo/milestones/:milestone/progress",
+            "/repos/{owner}/{repo}/milestones/{milestone}/progress",
             axum::routing::get(routes::releases::get_progress),
         )
         // Contributors
         .route(
-            "/repos/:owner/:repo/contributors",
+            "/repos/{owner}/{repo}/contributors",
             axum::routing::get(routes::contrib::list_contributors),
         )
         // SLA
         .route(
-            "/repos/:owner/:repo/sla",
+            "/repos/{owner}/{repo}/sla",
             axum::routing::get(routes::sla::get_sla_report),
+        )
+        // Sync
+        .route(
+            "/repos/{owner}/{repo}/sync",
+            axum::routing::post(routes::sync::sync_repo),
         )
         // Apply middleware in reverse order (last added runs first)
         .layer(middleware::from_fn_with_state(
