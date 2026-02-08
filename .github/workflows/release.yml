@@ -46,12 +46,14 @@ jobs:
           toolchain: stable
           target: ${{ matrix.target }}
 
-      - name: Install musl tools (Linux musl)
+      - name: Install musl tools and OpenSSL (Linux musl)
         if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools musl-dev libssl-dev pkg-config
 
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
+        env:
+          PKG_CONFIG_ALLOW_CROSS: ${{ matrix.target == 'x86_64-unknown-linux-musl' && '1' || '' }}
 
       - name: Create release archive (Unix)
         if: matrix.os != 'windows-latest'
@@ -115,7 +117,7 @@ jobs:
         id: release_notes
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
-          NOTES_FILE="docs/RELEASE-NOTES-${VERSION}.md"
+          NOTES_FILE="notes/RELEASE-NOTES-${VERSION}.md"
           if [ -f "$NOTES_FILE" ]; then
             echo "Found release notes: $NOTES_FILE"
             {
