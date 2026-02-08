@@ -10,7 +10,12 @@ description = "API server for greport - GitHub reporting and analytics"
 name = "greport-api"
 path = "src/main.rs"
 
+[features]
+default = []
+vendored-openssl = ["openssl/vendored"]
+
 [dependencies]
+openssl = { workspace = true, optional = true }
 # Core library
 greport-core = { workspace = true }
 greport-db = { workspace = true }
