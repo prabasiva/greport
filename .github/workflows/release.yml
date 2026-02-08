@@ -20,22 +20,27 @@ jobs:
             target: x86_64-unknown-linux-gnu
             artifact: greport-linux-amd64
             extension: ""
+            cargo_features: ""
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             artifact: greport-linux-amd64-musl
             extension: ""
+            cargo_features: "--features vendored-openssl"
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact: greport-macos-amd64
             extension: ""
+            cargo_features: ""
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: greport-macos-arm64
             extension: ""
+            cargo_features: ""
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact: greport-windows-amd64
             extension: ".exe"
+            cargo_features: ""
 
     steps:
       - uses: actions/checkout@v4
@@ -51,12 +56,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Build release binary
-        run: |
-          FEATURES=""
-          if [ "${{ matrix.target }}" = "x86_64-unknown-linux-musl" ]; then
-            FEATURES="--features vendored-openssl"
-          fi
-          cargo build --release --target ${{ matrix.target }} $FEATURES
+        run: cargo build --release --target ${{ matrix.target }} ${{ matrix.cargo_features }}
 
       - name: Create release archive (Unix)
         if: matrix.os != 'windows-latest'
