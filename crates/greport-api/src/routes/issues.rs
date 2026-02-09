@@ -79,7 +79,8 @@ pub async fn list_issues(
         ..Default::default()
     };
 
-    let issues = match state.github.list_issues(&repo_id, params).await {
+    let client = state.client_for_owner(&owner)?;
+    let issues = match client.list_issues(&repo_id, params).await {
         Ok(data) => data,
         Err(e) => {
             tracing::warn!(
@@ -119,7 +120,8 @@ pub async fn get_metrics(
 
     // Fallback: GitHub API
     let repo_id = RepoId::new(owner.clone(), repo.clone());
-    let issues = match state.github.list_issues(&repo_id, IssueParams::all()).await {
+    let client = state.client_for_owner(&owner)?;
+    let issues = match client.list_issues(&repo_id, IssueParams::all()).await {
         Ok(data) => data,
         Err(e) => {
             tracing::warn!(
@@ -169,7 +171,8 @@ pub async fn get_velocity(
 
     // Fallback: GitHub API
     let repo_id = RepoId::new(owner.clone(), repo.clone());
-    let issues = match state.github.list_issues(&repo_id, IssueParams::all()).await {
+    let client = state.client_for_owner(&owner)?;
+    let issues = match client.list_issues(&repo_id, IssueParams::all()).await {
         Ok(data) => data,
         Err(e) => {
             tracing::warn!(
@@ -219,18 +222,16 @@ pub async fn get_burndown(
     }
 
     // Fallback: GitHub API
+    let client = state.client_for_owner(&owner)?;
     let repo_id = RepoId::new(owner, repo);
 
-    let milestones = state.github.list_milestones(&repo_id).await?;
+    let milestones = client.list_milestones(&repo_id).await?;
     let ms = milestones
         .iter()
         .find(|m| m.title.eq_ignore_ascii_case(&query.milestone))
         .ok_or_else(|| ApiError::NotFound(format!("Milestone not found: {}", query.milestone)))?;
 
-    let issues = state
-        .github
-        .list_issues(&repo_id, IssueParams::all())
-        .await?;
+    let issues = client.list_issues(&repo_id, IssueParams::all()).await?;
     let burndown = BurndownCalculator::calculate(&issues, ms);
 
     Ok(Json(ApiResponse::ok(burndown)))
@@ -261,11 +262,8 @@ pub async fn get_stale(
 
     // Fallback: GitHub API
     let repo_id = RepoId::new(owner.clone(), repo.clone());
-    let issues = match state
-        .github
-        .list_issues(&repo_id, IssueParams::open())
-        .await
-    {
+    let client = state.client_for_owner(&owner)?;
+    let issues = match client.list_issues(&repo_id, IssueParams::open()).await {
         Ok(data) => data,
         Err(e) => {
             tracing::warn!(

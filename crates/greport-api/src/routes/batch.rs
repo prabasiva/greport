@@ -79,7 +79,30 @@ pub async fn batch_sync(
 
         let (owner, repo) = (parts[0], parts[1]);
 
-        match sync::sync_repository(pool, &state.github, owner, repo).await {
+        let client = match state.client_for_owner(owner) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    repo = %tracked_repo.full_name,
+                    error = %e,
+                    "No GitHub client configured for org"
+                );
+                results.push(RepoSyncResult {
+                    repository: tracked_repo.full_name.clone(),
+                    success: false,
+                    issues_synced: None,
+                    pulls_synced: None,
+                    releases_synced: None,
+                    milestones_synced: None,
+                    error: Some(format!("{e}")),
+                    warnings: vec![],
+                });
+                failed += 1;
+                continue;
+            }
+        };
+
+        match sync::sync_repository(pool, client.as_ref(), owner, repo).await {
             Ok(result) => {
                 results.push(RepoSyncResult {
                     repository: result.repository,

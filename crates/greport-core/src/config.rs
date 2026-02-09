@@ -11,6 +11,10 @@ pub struct Config {
     #[serde(default)]
     pub github: GitHubConfig,
 
+    /// Organization-specific configurations
+    #[serde(default)]
+    pub organizations: Vec<OrgConfig>,
+
     /// Default settings
     #[serde(default)]
     pub defaults: DefaultsConfig,
@@ -40,6 +44,20 @@ pub struct GitHubConfig {
 
     /// GitHub API base URL (for GitHub Enterprise)
     pub base_url: Option<String>,
+}
+
+/// Single organization configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrgConfig {
+    /// GitHub organization name (e.g., "my-org")
+    pub name: String,
+    /// GitHub personal access token scoped to this organization
+    pub token: String,
+    /// Optional GitHub API base URL (for GitHub Enterprise)
+    pub base_url: Option<String>,
+    /// Optional list of repository names (without org prefix) to report on
+    #[serde(default)]
+    pub repos: Option<Vec<String>>,
 }
 
 /// Default settings
@@ -189,8 +207,12 @@ impl Config {
         let content = std::fs::read_to_string(&config_path)
             .map_err(|e| crate::Error::Config(format!("Failed to read config: {}", e)))?;
 
-        toml::from_str(&content)
-            .map_err(|e| crate::Error::Config(format!("Failed to parse config: {}", e)))
+        let mut config: Config = toml::from_str(&content)
+            .map_err(|e| crate::Error::Config(format!("Failed to parse config: {}", e)))?;
+
+        config.merge_org_env_vars();
+
+        Ok(config)
     }
 
     /// Get the default configuration file path
@@ -208,6 +230,37 @@ impl Config {
         }
 
         std::env::var("GITHUB_TOKEN").map_err(|_| crate::Error::MissingToken)
+    }
+
+    /// Scan environment for GREPORT_ORG_*_TOKEN variables and merge into config
+    pub fn merge_org_env_vars(&mut self) {
+        for (key, value) in std::env::vars() {
+            if let Some(org_suffix) = key.strip_prefix("GREPORT_ORG_") {
+                if let Some(org_upper) = org_suffix.strip_suffix("_TOKEN") {
+                    let org_name = org_upper.to_lowercase().replace('_', "-");
+                    if let Some(org) = self.organizations.iter_mut().find(|o| o.name == org_name) {
+                        org.token = value;
+                    } else {
+                        let base_url_key = format!("GREPORT_ORG_{}_BASE_URL", org_upper);
+                        self.organizations.push(OrgConfig {
+                            name: org_name,
+                            token: value,
+                            base_url: std::env::var(base_url_key).ok(),
+                            repos: None,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    /// Get GitHub token for a specific organization
+    pub fn github_token_for_org(&self, org: &str) -> Option<String> {
+        let org_lower = org.to_lowercase();
+        self.organizations
+            .iter()
+            .find(|o| o.name.to_lowercase() == org_lower)
+            .map(|o| o.token.clone())
     }
 
     /// Resolve database URL (env var > config file)
@@ -301,5 +354,256 @@ impl Config {
             return v == "true" || v == "1";
         }
         self.server.require_auth.unwrap_or(false)
+    }
+
+    /// Collect repos from all configured organizations.
+    ///
+    /// Returns `RepoId` for each repo listed in each org's `repos` field.
+    /// Repos are listed as short names (e.g. "my-repo") and expanded to
+    /// `org-name/my-repo`.
+    pub fn resolved_repos(&self) -> Vec<crate::client::RepoId> {
+        self.organizations
+            .iter()
+            .flat_map(|org| {
+                org.repos
+                    .as_deref()
+                    .unwrap_or_default()
+                    .iter()
+                    .map(move |repo| crate::client::RepoId::new(&org.name, repo))
+            })
+            .collect()
+    }
+
+    /// Collect repos for a single organization by name.
+    ///
+    /// Returns `RepoId` for each repo listed in that org's `repos` field.
+    pub fn resolved_repos_for_org(&self, org: &str) -> Vec<crate::client::RepoId> {
+        let org_lower = org.to_lowercase();
+        self.organizations
+            .iter()
+            .filter(|o| o.name.to_lowercase() == org_lower)
+            .flat_map(|o| {
+                o.repos
+                    .as_deref()
+                    .unwrap_or_default()
+                    .iter()
+                    .map(move |repo| crate::client::RepoId::new(&o.name, repo))
+            })
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_parse_multi_org() {
+        let toml_str = r#"
+[github]
+token = "ghp_default"
+
+[[organizations]]
+name = "org-alpha"
+token = "ghp_alpha"
+
+[[organizations]]
+name = "org-beta"
+token = "ghp_beta"
+base_url = "https://github.enterprise.com/api/v3"
+"#;
+
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.organizations.len(), 2);
+        assert_eq!(config.organizations[0].name, "org-alpha");
+        assert_eq!(config.organizations[0].token, "ghp_alpha");
+        assert!(config.organizations[0].base_url.is_none());
+        assert_eq!(config.organizations[1].name, "org-beta");
+        assert_eq!(config.organizations[1].token, "ghp_beta");
+        assert_eq!(
+            config.organizations[1].base_url.as_deref(),
+            Some("https://github.enterprise.com/api/v3")
+        );
+    }
+
+    #[test]
+    fn test_config_backward_compat() {
+        let toml_str = r#"
+[github]
+token = "ghp_default"
+
+[defaults]
+format = "json"
+"#;
+
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.organizations.is_empty());
+        assert_eq!(config.github.token.as_deref(), Some("ghp_default"));
+        assert_eq!(config.defaults.format, "json");
+    }
+
+    #[test]
+    fn test_config_org_token_lookup() {
+        let config = Config {
+            organizations: vec![
+                OrgConfig {
+                    name: "my-org".to_string(),
+                    token: "ghp_myorg".to_string(),
+                    base_url: None,
+                    repos: None,
+                },
+                OrgConfig {
+                    name: "other-org".to_string(),
+                    token: "ghp_other".to_string(),
+                    base_url: None,
+                    repos: None,
+                },
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            config.github_token_for_org("my-org"),
+            Some("ghp_myorg".to_string())
+        );
+        assert_eq!(
+            config.github_token_for_org("other-org"),
+            Some("ghp_other".to_string())
+        );
+        assert_eq!(config.github_token_for_org("unknown-org"), None);
+    }
+
+    #[test]
+    fn test_config_org_token_case_insensitive() {
+        let config = Config {
+            organizations: vec![OrgConfig {
+                name: "My-Org".to_string(),
+                token: "ghp_myorg".to_string(),
+                base_url: None,
+                repos: None,
+            }],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            config.github_token_for_org("my-org"),
+            Some("ghp_myorg".to_string())
+        );
+        assert_eq!(
+            config.github_token_for_org("MY-ORG"),
+            Some("ghp_myorg".to_string())
+        );
+        assert_eq!(
+            config.github_token_for_org("My-Org"),
+            Some("ghp_myorg".to_string())
+        );
+    }
+
+    #[test]
+    fn test_config_parse_org_repos() {
+        let toml_str = r#"
+[github]
+token = "ghp_default"
+
+[[organizations]]
+name = "org-alpha"
+token = "ghp_alpha"
+repos = ["api-service", "web-frontend"]
+
+[[organizations]]
+name = "org-beta"
+token = "ghp_beta"
+"#;
+
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.organizations.len(), 2);
+
+        let alpha = &config.organizations[0];
+        let alpha_repos = alpha.repos.as_ref().unwrap();
+        assert_eq!(alpha_repos, &["api-service", "web-frontend"]);
+
+        let beta = &config.organizations[1];
+        assert!(beta.repos.is_none());
+    }
+
+    #[test]
+    fn test_resolved_repos_for_org() {
+        let config = Config {
+            organizations: vec![
+                OrgConfig {
+                    name: "org-alpha".to_string(),
+                    token: "ghp_alpha".to_string(),
+                    base_url: None,
+                    repos: Some(vec!["api".to_string(), "web".to_string()]),
+                },
+                OrgConfig {
+                    name: "org-beta".to_string(),
+                    token: "ghp_beta".to_string(),
+                    base_url: None,
+                    repos: Some(vec!["sdk".to_string()]),
+                },
+            ],
+            ..Default::default()
+        };
+
+        let alpha_repos = config.resolved_repos_for_org("org-alpha");
+        assert_eq!(alpha_repos.len(), 2);
+        assert_eq!(alpha_repos[0].full_name(), "org-alpha/api");
+        assert_eq!(alpha_repos[1].full_name(), "org-alpha/web");
+
+        let beta_repos = config.resolved_repos_for_org("org-beta");
+        assert_eq!(beta_repos.len(), 1);
+        assert_eq!(beta_repos[0].full_name(), "org-beta/sdk");
+
+        // Case-insensitive lookup
+        let upper = config.resolved_repos_for_org("ORG-ALPHA");
+        assert_eq!(upper.len(), 2);
+
+        // Unknown org returns empty
+        let unknown = config.resolved_repos_for_org("unknown");
+        assert!(unknown.is_empty());
+    }
+
+    #[test]
+    fn test_resolved_repos_all_orgs() {
+        let config = Config {
+            organizations: vec![
+                OrgConfig {
+                    name: "org-alpha".to_string(),
+                    token: "ghp_alpha".to_string(),
+                    base_url: None,
+                    repos: Some(vec!["api".to_string()]),
+                },
+                OrgConfig {
+                    name: "org-beta".to_string(),
+                    token: "ghp_beta".to_string(),
+                    base_url: None,
+                    repos: Some(vec!["sdk".to_string(), "cli".to_string()]),
+                },
+            ],
+            ..Default::default()
+        };
+
+        let all = config.resolved_repos();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[0].full_name(), "org-alpha/api");
+        assert_eq!(all[1].full_name(), "org-beta/sdk");
+        assert_eq!(all[2].full_name(), "org-beta/cli");
+    }
+
+    #[test]
+    fn test_resolved_repos_empty_when_no_repos() {
+        let config = Config {
+            organizations: vec![OrgConfig {
+                name: "org-alpha".to_string(),
+                token: "ghp_alpha".to_string(),
+                base_url: None,
+                repos: None,
+            }],
+            ..Default::default()
+        };
+
+        assert!(config.resolved_repos().is_empty());
+        assert!(config.resolved_repos_for_org("org-alpha").is_empty());
     }
 }

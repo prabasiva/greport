@@ -63,7 +63,7 @@ pub struct IssuesArgs {
     pub command: IssuesCommands,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 pub enum IssuesCommands {
     /// List issues with filters
     List {
@@ -149,7 +149,7 @@ pub struct PrsArgs {
     pub command: PrsCommands,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 pub enum PrsCommands {
     /// List pull requests with filters
     List {
@@ -180,7 +180,7 @@ pub struct ReleasesArgs {
     pub command: ReleasesCommands,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 pub enum ReleasesCommands {
     /// List releases
     List {
@@ -215,7 +215,7 @@ pub struct ContribArgs {
     pub command: ContribCommands,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 pub enum ContribCommands {
     /// List contributors with stats
     List {
@@ -267,7 +267,7 @@ pub enum ConfigCommands {
 }
 
 // Sync command
-#[derive(Parser)]
+#[derive(Parser, Clone)]
 pub struct SyncArgs {
     /// Sync all data
     #[arg(long)]

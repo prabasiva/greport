@@ -44,7 +44,8 @@ pub async fn list_releases(
     // Fallback: GitHub API
     let repo_id = RepoId::new(owner.clone(), repo.clone());
 
-    let releases = match state.github.list_releases(&repo_id).await {
+    let client = state.client_for_owner(&owner)?;
+    let releases = match client.list_releases(&repo_id).await {
         Ok(data) => data,
         Err(e) => {
             tracing::warn!(
@@ -112,20 +113,18 @@ pub async fn get_notes(
     }
 
     // Fallback: GitHub API
+    let client = state.client_for_owner(&owner)?;
     let repo_id = RepoId::new(owner, repo);
 
     // Get milestone
-    let milestones = state.github.list_milestones(&repo_id).await?;
+    let milestones = client.list_milestones(&repo_id).await?;
     let ms = milestones
         .iter()
         .find(|m| m.title.eq_ignore_ascii_case(&query.milestone))
         .ok_or_else(|| ApiError::NotFound(format!("Milestone not found: {}", query.milestone)))?;
 
     // Get closed issues for milestone
-    let issues = state
-        .github
-        .list_issues(&repo_id, IssueParams::closed())
-        .await?;
+    let issues = client.list_issues(&repo_id, IssueParams::closed()).await?;
     let milestone_issues: Vec<_> = issues
         .into_iter()
         .filter(|i| i.milestone.as_ref().map(|m| m.id) == Some(ms.id))
@@ -133,7 +132,7 @@ pub async fn get_notes(
         .collect();
 
     // Get merged PRs
-    let prs = state.github.list_pulls(&repo_id, PullParams::all()).await?;
+    let prs = client.list_pulls(&repo_id, PullParams::all()).await?;
     let merged_prs: Vec<_> = prs.into_iter().filter(|p| p.merged).collect();
 
     // Generate notes
@@ -165,9 +164,10 @@ pub async fn get_progress(
     }
 
     // Fallback: GitHub API
+    let client = state.client_for_owner(&owner)?;
     let repo_id = RepoId::new(owner, repo);
 
-    let milestones = state.github.list_milestones(&repo_id).await?;
+    let milestones = client.list_milestones(&repo_id).await?;
     let ms = milestones
         .into_iter()
         .find(|m| m.title.eq_ignore_ascii_case(&milestone))
