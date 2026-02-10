@@ -7,10 +7,17 @@ mod output;
 
 use args::{Cli, Commands};
 use clap::Parser;
-use greport_core::{OctocrabClient, RepoId};
+use greport_core::{Config, GitHubClientRegistry, OctocrabClient, RepoId};
 use std::process::ExitCode;
+use std::sync::Arc;
 use tracing::{debug, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+/// Whether the user targets a single repo or multiple repos.
+enum RepoTarget {
+    Single(RepoId),
+    Multi(Vec<RepoId>),
+}
 
 /// ASCII art banner for greport
 const BANNER: &str = r#"
@@ -89,6 +96,9 @@ fn print_error(error: &anyhow::Error) {
         eprintln!("Specify a repository using:");
         eprintln!("  1. Command line: greport -r owner/repo <command>");
         eprintln!("  2. Config file: add 'repo = \"owner/repo\"' to [defaults] section");
+        eprintln!(
+            "  3. Config file: add 'repos = [\"repo1\", \"repo2\"]' to [[organizations]] entries"
+        );
     } else if error_debug.contains("Invalid repository format") {
         // Extract the invalid repo name from the error message
         let repo_name = error_display
@@ -153,14 +163,16 @@ async fn run() -> anyhow::Result<()> {
     // Load .env file if present
     let dotenv_result = dotenvy::dotenv();
 
-    // Load config early for log level resolution (env var > config.toml > default)
-    let early_config = greport_core::Config::load(None).unwrap_or_default();
+    // Parse arguments first so --config flag is available for log level
+    let cli = Cli::parse();
 
-    // Initialize logging
+    // Load config from the correct path (--config flag or default)
+    let config_path = cli.config.as_deref();
+    let cfg = config::load_config(config_path)?;
+
+    // Initialize logging using the resolved config (env var > config.toml > "warn")
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            early_config.rust_log("warn"),
-        ))
+        .with(tracing_subscriber::EnvFilter::new(cfg.rust_log("warn")))
         .with(tracing_subscriber::fmt::layer().with_target(false))
         .init();
 
@@ -173,14 +185,7 @@ async fn run() -> anyhow::Result<()> {
     // Print banner
     print_banner();
 
-    // Parse arguments
-    let cli = Cli::parse();
     debug!(repo = ?cli.repo, format = ?cli.format, "Parsed CLI arguments");
-
-    // Load configuration
-    let config_path = cli.config.as_deref();
-    debug!(config_path = ?config_path, "Loading configuration");
-    let cfg = config::load_config(config_path)?;
 
     // Log configuration details
     if let Some(ref path) = cli.config {
@@ -199,84 +204,190 @@ async fn run() -> anyhow::Result<()> {
         return commands::config::handle_config(&args.command);
     }
 
-    // Resolve token source
-    let (token, token_source) = if let Some(ref t) = cfg.github.token {
-        debug!("Using GitHub token from config file");
-        (t.clone(), "config file")
-    } else if let Ok(t) = std::env::var("GITHUB_TOKEN") {
-        debug!("Using GitHub token from GITHUB_TOKEN environment variable");
-        (t, "GITHUB_TOKEN env var")
+    // Handle orgs command separately (doesn't need GitHub client)
+    if let Commands::Orgs(args) = &cli.command {
+        return commands::orgs::handle_orgs(&args.command, &cfg);
+    }
+
+    // Build client registry (supports multi-org and single-token configs)
+    let has_orgs = !cfg.organizations.is_empty();
+    let registry = if has_orgs {
+        info!(
+            org_count = cfg.organizations.len(),
+            "Building multi-org client registry"
+        );
+        GitHubClientRegistry::from_config(&cfg)?
     } else {
-        anyhow::bail!("Missing GitHub token. Set GITHUB_TOKEN environment variable or configure in ~/.config/greport/config.toml");
+        // Legacy single-token path: resolve token from config or env
+        let (token, token_source) = if let Some(ref t) = cfg.github.token {
+            debug!("Using GitHub token from config file");
+            (t.clone(), "config file")
+        } else if let Ok(t) = std::env::var("GITHUB_TOKEN") {
+            debug!("Using GitHub token from GITHUB_TOKEN environment variable");
+            (t, "GITHUB_TOKEN env var")
+        } else {
+            anyhow::bail!(
+                "Missing GitHub token.\n\n\
+                 Set your token using one of these methods:\n  \
+                 1. Environment variable: export GITHUB_TOKEN=ghp_xxx\n  \
+                 2. Config file: add 'token = \"ghp_xxx\"' to [github] section\n     \
+                    in ~/.config/greport/config.toml\n  \
+                 3. Multi-org: add [[organizations]] entries with per-org tokens"
+            );
+        };
+
+        let base_url = cfg
+            .github
+            .base_url
+            .clone()
+            .or_else(|| std::env::var("GITHUB_BASE_URL").ok());
+
+        info!(
+            token_source = token_source,
+            base_url = base_url
+                .as_deref()
+                .unwrap_or("https://api.github.com (default)"),
+            "Connecting to GitHub API"
+        );
+
+        // Build a registry with just the default client
+        let client = OctocrabClient::new(&token, base_url.as_deref())?;
+        // Wrap in a minimal registry so all code paths use the same type
+        GitHubClientRegistry::with_default(client)
     };
-
-    // Resolve base_url source
-    let (base_url, base_url_source) = if let Some(ref url) = cfg.github.base_url {
-        debug!(url = %url, "Using base URL from config file");
-        (Some(url.clone()), Some("config file"))
-    } else if let Ok(url) = std::env::var("GITHUB_BASE_URL") {
-        debug!(url = %url, "Using base URL from GITHUB_BASE_URL environment variable");
-        (Some(url), Some("GITHUB_BASE_URL env var"))
-    } else {
-        debug!("No base URL configured, using default GitHub.com API");
-        (None, None)
-    };
-
-    // Log connection info
-    info!(
-        token_source = token_source,
-        base_url = base_url
-            .as_deref()
-            .unwrap_or("https://api.github.com (default)"),
-        base_url_source = base_url_source.unwrap_or("default"),
-        "Connecting to GitHub API"
-    );
-
-    let client = OctocrabClient::new(&token, base_url.as_deref())?;
     info!("GitHub client initialized successfully");
 
-    // Resolve repository
-    let (repo, repo_source) = match (&cli.repo, &cfg.defaults.repo) {
-        (Some(r), _) => {
-            debug!(repo = %r, "Using repository from command line argument");
-            (RepoId::parse(r)?, "command line (-r/--repo)")
+    // Validate tokens when verbose mode is enabled
+    if cli.verbose {
+        let valid = registry.validate_tokens().await;
+        info!(valid_tokens = valid, "Token validation complete");
+    }
+
+    // Resolve repository target using precedence rules:
+    // 1. -r org/repo  -> Single repo (highest priority)
+    // 2. --org <name> without -r -> Multi: that org's configured repos
+    // 3. No -r, no --org -> Multi: all orgs' configured repos
+    // 4. No -r, no org repos -> Single: defaults.repo fallback
+    // 5. None of the above -> error
+    let target = if let Some(ref r) = cli.repo {
+        debug!(repo = %r, "Using repository from command line argument");
+        RepoTarget::Single(RepoId::parse(r)?)
+    } else if let Some(ref org_name) = cli.org {
+        let repos = cfg.resolved_repos_for_org(org_name);
+        if repos.is_empty() {
+            anyhow::bail!(
+                "No repos configured for organization '{}'. \
+                 Add repos = [\"repo1\", \"repo2\"] to the [[organizations]] entry, \
+                 or use -r org/repo to specify a single repo.",
+                org_name
+            );
         }
-        (None, Some(r)) => {
+        debug!(org = %org_name, count = repos.len(), "Using repos from org config");
+        RepoTarget::Multi(repos)
+    } else {
+        let all_repos = cfg.resolved_repos();
+        if !all_repos.is_empty() {
+            debug!(count = all_repos.len(), "Using repos from all org configs");
+            RepoTarget::Multi(all_repos)
+        } else if let Some(ref r) = cfg.defaults.repo {
             debug!(repo = %r, "Using repository from config file defaults");
-            (RepoId::parse(r)?, "config file (defaults.repo)")
-        }
-        (None, None) => {
+            RepoTarget::Single(RepoId::parse(r)?)
+        } else {
             anyhow::bail!("No repository specified. Use -r/--repo or set defaults.repo in config");
         }
     };
-    info!(
-        repo = %repo,
-        source = repo_source,
-        "Target repository"
-    );
 
-    // Execute command
-    match cli.command {
-        Commands::Issues(args) => {
-            commands::issues::handle_issues(&client, &repo, args.command, cli.format, &cfg).await?;
+    // Execute across target repo(s)
+    match target {
+        RepoTarget::Single(repo) => {
+            info!(repo = %repo, "Target repository");
+            let client = registry.client_for_repo(&repo)?;
+            execute_command(client.clone(), &repo, &cli.command, cli.format, &cfg).await?;
         }
-        Commands::Prs(args) => {
-            commands::pulls::handle_pulls(&client, &repo, args.command, cli.format).await?;
-        }
-        Commands::Releases(args) => {
-            commands::releases::handle_releases(&client, &repo, args.command, cli.format).await?;
-        }
-        Commands::Contrib(args) => {
-            commands::contrib::handle_contrib(&client, &repo, args.command, cli.format).await?;
-        }
-        Commands::Sync(args) => {
-            commands::sync::handle_sync(&client, &repo, args).await?;
-        }
-        Commands::Config(_) => {
-            // Already handled above
-            unreachable!()
+        RepoTarget::Multi(repos) => {
+            let total = repos.len();
+            info!(count = total, "Running across multiple repositories");
+            let mut had_error = false;
+            for (i, repo) in repos.iter().enumerate() {
+                eprintln!("{}", format_repo_header(&repo.full_name(), i + 1, total));
+                let client = match registry.client_for_repo(repo) {
+                    Ok(c) => c.clone(),
+                    Err(e) => {
+                        eprintln!("  Error for {}: {}", repo, e);
+                        eprintln!();
+                        had_error = true;
+                        continue;
+                    }
+                };
+                if let Err(e) = execute_command(client, repo, &cli.command, cli.format, &cfg).await
+                {
+                    eprintln!("  Error for {}: {}", repo, e);
+                    eprintln!();
+                    had_error = true;
+                }
+            }
+            if had_error {
+                anyhow::bail!("One or more repositories encountered errors");
+            }
         }
     }
 
     Ok(())
+}
+
+/// Execute a single command against one repository.
+async fn execute_command(
+    client: Arc<OctocrabClient>,
+    repo: &RepoId,
+    command: &Commands,
+    format: args::OutputFormat,
+    cfg: &Config,
+) -> anyhow::Result<()> {
+    match command {
+        Commands::Issues(args) => {
+            commands::issues::handle_issues(
+                client.as_ref(),
+                repo,
+                args.command.clone(),
+                format,
+                cfg,
+            )
+            .await?;
+        }
+        Commands::Prs(args) => {
+            commands::pulls::handle_pulls(client.as_ref(), repo, args.command.clone(), format)
+                .await?;
+        }
+        Commands::Releases(args) => {
+            commands::releases::handle_releases(
+                client.as_ref(),
+                repo,
+                args.command.clone(),
+                format,
+            )
+            .await?;
+        }
+        Commands::Contrib(args) => {
+            commands::contrib::handle_contrib(client.as_ref(), repo, args.command.clone(), format)
+                .await?;
+        }
+        Commands::Sync(args) => {
+            commands::sync::handle_sync(client.as_ref(), repo, args.clone()).await?;
+        }
+        Commands::Config(_) | Commands::Orgs(_) => {
+            unreachable!()
+        }
+    }
+    Ok(())
+}
+
+/// Format a header line for multi-repo output.
+fn format_repo_header(repo_name: &str, index: usize, total: usize) -> String {
+    let prefix = format!("--- {} ({}/{}) ", repo_name, index, total);
+    let padding = if prefix.len() < 60 {
+        "-".repeat(60 - prefix.len())
+    } else {
+        "---".to_string()
+    };
+    format!("{}{}", prefix, padding)
 }

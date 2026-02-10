@@ -68,7 +68,8 @@ pub async fn list_pulls(
         ..Default::default()
     };
 
-    let prs = match state.github.list_pulls(&repo_id, params).await {
+    let client = state.client_for_owner(&owner)?;
+    let prs = match client.list_pulls(&repo_id, params).await {
         Ok(data) => data,
         Err(e) => {
             tracing::warn!(
@@ -107,7 +108,8 @@ pub async fn get_metrics(
 
     // Fallback: GitHub API
     let repo_id = RepoId::new(owner.clone(), repo.clone());
-    let prs = match state.github.list_pulls(&repo_id, PullParams::all()).await {
+    let client = state.client_for_owner(&owner)?;
+    let prs = match client.list_pulls(&repo_id, PullParams::all()).await {
         Ok(data) => data,
         Err(e) => {
             tracing::warn!(

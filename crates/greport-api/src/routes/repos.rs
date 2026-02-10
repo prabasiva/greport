@@ -101,7 +101,8 @@ pub async fn add_repo(
     }
 
     // Sync the repository (this also upserts it into the DB)
-    let result = sync::sync_repository(pool, &state.github, owner, repo).await?;
+    let client = state.client_for_owner(owner)?;
+    let result = sync::sync_repository(pool, client.as_ref(), owner, repo).await?;
 
     Ok(Json(ApiResponse::ok(RepoSummary {
         owner: owner.to_string(),

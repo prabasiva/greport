@@ -105,10 +105,8 @@ async fn fetch_from_github(
     crate::error::ApiError,
 > {
     let repo_id = RepoId::new(owner.to_string(), repo.to_string());
-    let issues = state
-        .github
-        .list_issues(&repo_id, IssueParams::all())
-        .await?;
-    let prs = state.github.list_pulls(&repo_id, PullParams::all()).await?;
+    let client = state.client_for_owner(owner)?;
+    let issues = client.list_issues(&repo_id, IssueParams::all()).await?;
+    let prs = client.list_pulls(&repo_id, PullParams::all()).await?;
     Ok((issues, prs))
 }

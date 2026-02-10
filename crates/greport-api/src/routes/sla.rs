@@ -138,7 +138,8 @@ async fn fetch_open_issues(
             .map(|l| l.split(',').map(String::from).collect()),
         ..IssueParams::open()
     };
-    let issues = state.github.list_issues(&repo_id, params).await?;
+    let client = state.client_for_owner(owner)?;
+    let issues = client.list_issues(&repo_id, params).await?;
     Ok(issues)
 }
 

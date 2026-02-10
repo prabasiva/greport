@@ -20,7 +20,56 @@ use rate_limit::start_cleanup_task;
 use state::AppState;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> std::process::ExitCode {
+    match run().await {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(e) => {
+            print_error(&e);
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+/// Print error message in a user-friendly format
+fn print_error(error: &anyhow::Error) {
+    let error_debug = format!("{:?}", error);
+    let error_display = format!("{}", error);
+
+    if error_debug.contains("Address already in use") || error_debug.contains("os error 48") {
+        eprintln!("Error: Address already in use.");
+        eprintln!();
+        eprintln!("Another process is already listening on this port.");
+        eprintln!("Solutions:");
+        eprintln!("  1. Stop the other process using this port");
+        eprintln!("  2. Use a different port: API_PORT=9424 cargo run --bin greport-api");
+        eprintln!("  3. Set port in config: [server] port = 9424");
+    } else if error_debug.contains("Missing GitHub token") {
+        eprintln!("Error: Missing GitHub token.");
+        eprintln!();
+        eprintln!("The API server requires a GitHub token.");
+        eprintln!("Set it using one of these methods:");
+        eprintln!("  1. Environment variable: export GITHUB_TOKEN=ghp_xxx");
+        eprintln!("  2. Config file: add 'token = \"ghp_xxx\"' to [github] section");
+        eprintln!("     in ~/.config/greport/config.toml");
+    } else if error_debug.contains("database") || error_debug.contains("postgres") {
+        eprintln!("Error: Database connection failed.");
+        eprintln!();
+        eprintln!("Details: {}", error_display);
+        eprintln!();
+        eprintln!("Please check:");
+        eprintln!("  - PostgreSQL is running");
+        eprintln!("  - Database URL is correct in config or DATABASE_URL env var");
+    } else if error_debug.contains("Permission denied") || error_debug.contains("os error 13") {
+        eprintln!("Error: Permission denied when binding to address.");
+        eprintln!();
+        eprintln!("Ports below 1024 require elevated privileges.");
+        eprintln!("Use a port above 1024 (default: 9423).");
+    } else {
+        eprintln!("Error: {}", error_display);
+    }
+}
+
+async fn run() -> anyhow::Result<()> {
     // Load .env file
     let _ = dotenvy::dotenv();
 
@@ -35,8 +84,21 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    // Log config source
+    if let Ok(default_path) = greport_core::Config::default_config_path() {
+        if default_path.exists() {
+            tracing::info!(path = %default_path.display(), "Configuration loaded");
+        } else {
+            tracing::info!(path = %default_path.display(), "No config file found, using defaults");
+        }
+    }
+
     // Create application state with pre-loaded config
     let state = AppState::with_core_config(core_config.clone()).await?;
+
+    // Validate tokens at startup (non-fatal)
+    let valid = state.registry.validate_tokens().await;
+    tracing::info!(valid_tokens = valid, "Token validation complete");
 
     // Start rate limiter cleanup task
     start_cleanup_task(Arc::clone(&state.rate_limiter));
@@ -144,6 +206,12 @@ fn build_router(state: AppState) -> Router {
         )
         // Batch sync (all tracked repos)
         .route("/sync", axum::routing::post(routes::batch::batch_sync))
+        // Organizations
+        .route("/orgs", axum::routing::get(routes::orgs::list_orgs))
+        .route(
+            "/orgs/{org}/repos",
+            axum::routing::get(routes::orgs::list_org_repos),
+        )
         // Aggregate lists
         .route(
             "/aggregate/issues",
@@ -169,6 +237,15 @@ fn build_router(state: AppState) -> Router {
         .route(
             "/aggregate/velocity",
             axum::routing::get(routes::aggregate::aggregate_velocity),
+        )
+        // Cross-org aggregate
+        .route(
+            "/aggregate/orgs/issues",
+            axum::routing::get(routes::aggregate::aggregate_org_issues),
+        )
+        .route(
+            "/aggregate/orgs/pulls",
+            axum::routing::get(routes::aggregate::aggregate_org_pulls),
         )
         .route(
             "/aggregate/calendar",

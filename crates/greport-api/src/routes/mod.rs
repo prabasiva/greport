@@ -6,6 +6,7 @@ pub mod calendar;
 pub mod contrib;
 pub mod health;
 pub mod issues;
+pub mod orgs;
 pub mod pulls;
 pub mod release_plan;
 pub mod releases;

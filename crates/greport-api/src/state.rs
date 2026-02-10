@@ -1,21 +1,39 @@
 //! Application state
 
 use crate::rate_limit::RateLimiter;
-use greport_core::OctocrabClient;
+use greport_core::{GitHubClientRegistry, OctocrabClient};
 use greport_db::DbPool;
 use std::sync::Arc;
 
 /// Shared application state
 #[derive(Clone)]
 pub struct AppState {
-    /// GitHub client
-    pub github: Arc<OctocrabClient>,
+    /// GitHub client registry (supports multi-org)
+    pub registry: Arc<GitHubClientRegistry>,
     /// API configuration
     pub config: Arc<ApiConfig>,
     /// Database pool (optional)
     pub db: Option<DbPool>,
     /// Rate limiter
     pub rate_limiter: Arc<RateLimiter>,
+}
+
+impl AppState {
+    /// Get the GitHub client for a specific repository owner/org.
+    ///
+    /// Resolves the correct per-org client from the registry, falling back
+    /// to the default client for unconfigured orgs.
+    pub fn client_for_owner(
+        &self,
+        owner: &str,
+    ) -> Result<&Arc<OctocrabClient>, crate::error::ApiError> {
+        self.registry.client_for_org(owner).map_err(|e| {
+            crate::error::ApiError::BadRequest(format!(
+                "No GitHub token configured for organization '{}': {}",
+                owner, e
+            ))
+        })
+    }
 }
 
 /// API configuration
@@ -74,22 +92,34 @@ impl AppState {
     pub async fn with_core_config(core_config: greport_core::Config) -> anyhow::Result<Self> {
         tracing::debug!("Initializing application state");
 
-        let token = core_config.github_token().map_err(|_| {
-            anyhow::anyhow!("GITHUB_TOKEN not set in environment or ~/.config/greport/config.toml")
-        })?;
-        tracing::debug!("GitHub token loaded");
-
-        let base_url = std::env::var("GITHUB_BASE_URL")
-            .ok()
-            .or(core_config.github.base_url.clone());
-        if let Some(ref url) = base_url {
-            tracing::info!(base_url = %url, "Using GitHub Enterprise base URL");
+        let has_orgs = !core_config.organizations.is_empty();
+        let registry = if has_orgs {
+            tracing::info!(
+                org_count = core_config.organizations.len(),
+                "Building multi-org client registry"
+            );
+            Arc::new(GitHubClientRegistry::from_config(&core_config)?)
         } else {
-            tracing::debug!("Using default GitHub.com API");
-        }
+            let token = core_config.github_token().map_err(|_| {
+                anyhow::anyhow!(
+                    "GITHUB_TOKEN not set in environment or ~/.config/greport/config.toml"
+                )
+            })?;
+            tracing::debug!("GitHub token loaded");
 
-        let github = Arc::new(OctocrabClient::new(&token, base_url.as_deref())?);
-        tracing::info!("GitHub client initialized");
+            let base_url = std::env::var("GITHUB_BASE_URL")
+                .ok()
+                .or(core_config.github.base_url.clone());
+            if let Some(ref url) = base_url {
+                tracing::info!(base_url = %url, "Using GitHub Enterprise base URL");
+            } else {
+                tracing::debug!("Using default GitHub.com API");
+            }
+
+            let client = OctocrabClient::new(&token, base_url.as_deref())?;
+            Arc::new(GitHubClientRegistry::with_default(client))
+        };
+        tracing::info!("GitHub client registry initialized");
 
         let config = Arc::new(ApiConfig::from_core_config(&core_config));
         tracing::debug!(
@@ -130,7 +160,7 @@ impl AppState {
         };
 
         Ok(Self {
-            github,
+            registry,
             config,
             db,
             rate_limiter,
@@ -143,7 +173,7 @@ impl AppState {
     pub fn test_state(github: OctocrabClient) -> Self {
         let config = ApiConfig::default();
         Self {
-            github: Arc::new(github),
+            registry: Arc::new(GitHubClientRegistry::with_default(github)),
             config: Arc::new(config.clone()),
             db: None,
             rate_limiter: Arc::new(RateLimiter::new(config.rate_limit_per_minute)),

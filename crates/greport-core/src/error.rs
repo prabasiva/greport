@@ -10,7 +10,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     /// GitHub API error
     #[error("GitHub API error: {0}")]
-    GitHubApi(Box<octocrab::Error>),
+    GitHubApi(String),
 
     /// Invalid repository format
     #[error("Invalid repository format: {0}. Expected 'owner/repo'")]
@@ -23,6 +23,19 @@ pub enum Error {
     /// Missing GitHub token
     #[error("Missing GitHub token. Set GITHUB_TOKEN environment variable")]
     MissingToken,
+
+    /// No token configured for the specified organization
+    #[error(
+        "No GitHub token configured for organization '{org}'. \
+         Add an [[organizations]] entry in config.toml or set \
+         GREPORT_ORG_{env_var}_TOKEN environment variable"
+    )]
+    OrgNotConfigured {
+        /// Organization name
+        org: String,
+        /// Environment variable suffix (uppercase org name)
+        env_var: String,
+    },
 
     /// Rate limit exceeded
     #[error("Rate limit exceeded. Resets at {reset_at}")]
@@ -79,6 +92,19 @@ impl Error {
 
 impl From<octocrab::Error> for Error {
     fn from(err: octocrab::Error) -> Self {
-        Error::GitHubApi(Box::new(err))
+        match &err {
+            octocrab::Error::GitHub { source, .. } => Error::GitHubApi(format!(
+                "{}: {}",
+                source.status_code.as_u16(),
+                source.message
+            )),
+            octocrab::Error::Http { source, .. } => {
+                Error::GitHubApi(format!("HTTP error: {}", source))
+            }
+            octocrab::Error::Serde { source, .. } => {
+                Error::GitHubApi(format!("Response parse error: {}", source))
+            }
+            _ => Error::GitHubApi(format!("{}", err)),
+        }
     }
 }

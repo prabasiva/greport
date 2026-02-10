@@ -120,6 +120,14 @@ pub struct OctocrabClient {
     retry_config: RetryConfig,
 }
 
+impl std::fmt::Debug for OctocrabClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OctocrabClient")
+            .field("retry_config", &self.retry_config)
+            .finish_non_exhaustive()
+    }
+}
+
 impl OctocrabClient {
     /// Create a new client with the given token and optional base URL
     ///

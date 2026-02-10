@@ -388,6 +388,110 @@ pub async fn aggregate_pulls_list(
     )))
 }
 
+// ---------------------------------------------------------------------------
+// Cross-org aggregate types
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct OrgAggregateIssueItem {
+    pub organization: String,
+    pub repository: String,
+    #[serde(flatten)]
+    pub issue: Issue,
+}
+
+#[derive(Serialize)]
+pub struct OrgAggregatePullItem {
+    pub organization: String,
+    pub repository: String,
+    #[serde(flatten)]
+    pub pull: PullRequest,
+}
+
+/// GET /api/v1/aggregate/orgs/issues
+///
+/// Cross-org aggregation: lists issues across all synced repos with org field.
+pub async fn aggregate_org_issues(
+    State(state): State<AppState>,
+    Query(query): Query<AggregateListQuery>,
+) -> Result<Json<PaginatedResponse<OrgAggregateIssueItem>>, ApiError> {
+    let pool = state
+        .db
+        .as_ref()
+        .ok_or_else(|| ApiError::BadRequest("Database required for aggregate list".into()))?;
+
+    let repos = get_synced_repos(&state).await?;
+    let state_filter = query.state.as_deref();
+    let days_filter = query.days;
+    let mut all_items: Vec<OrgAggregateIssueItem> = Vec::new();
+
+    for repo in &repos {
+        let issues = convert::issues_from_db(pool, repo.db_id, None, None).await?;
+        let filtered = filter_issues(issues, state_filter, days_filter);
+        let organization = repo.full_name.split('/').next().unwrap_or("").to_string();
+        for issue in filtered {
+            all_items.push(OrgAggregateIssueItem {
+                organization: organization.clone(),
+                repository: repo.full_name.clone(),
+                issue,
+            });
+        }
+    }
+
+    // Sort newest first
+    all_items.sort_by(|a, b| b.issue.created_at.cmp(&a.issue.created_at));
+
+    let total = all_items.len() as u32;
+    Ok(Json(PaginatedResponse::new(
+        all_items,
+        query.page.unwrap_or(1),
+        query.per_page.unwrap_or(30),
+        total,
+    )))
+}
+
+/// GET /api/v1/aggregate/orgs/pulls
+///
+/// Cross-org aggregation: lists pull requests across all synced repos with org field.
+pub async fn aggregate_org_pulls(
+    State(state): State<AppState>,
+    Query(query): Query<AggregateListQuery>,
+) -> Result<Json<PaginatedResponse<OrgAggregatePullItem>>, ApiError> {
+    let pool = state
+        .db
+        .as_ref()
+        .ok_or_else(|| ApiError::BadRequest("Database required for aggregate list".into()))?;
+
+    let repos = get_synced_repos(&state).await?;
+    let state_filter = query.state.as_deref();
+    let days_filter = query.days;
+    let mut all_items: Vec<OrgAggregatePullItem> = Vec::new();
+
+    for repo in &repos {
+        let pulls = convert::pulls_from_db(pool, repo.db_id, None, None).await?;
+        let filtered = filter_pulls(pulls, state_filter, days_filter);
+        let organization = repo.full_name.split('/').next().unwrap_or("").to_string();
+        for pull in filtered {
+            all_items.push(OrgAggregatePullItem {
+                organization: organization.clone(),
+                repository: repo.full_name.clone(),
+                pull,
+            });
+        }
+    }
+
+    // Sort newest first
+    all_items.sort_by(|a, b| b.pull.created_at.cmp(&a.pull.created_at));
+
+    let total = all_items.len() as u32;
+    Ok(Json(PaginatedResponse::new(
+        all_items,
+        query.page.unwrap_or(1),
+        query.per_page.unwrap_or(30),
+        total,
+    )))
+}
+
 /// GET /api/v1/aggregate/pulls/metrics
 pub async fn aggregate_pull_metrics(
     State(state): State<AppState>,

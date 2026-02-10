@@ -22,7 +22,8 @@ pub async fn sync_repo(
         .as_ref()
         .ok_or_else(|| ApiError::BadRequest("Database not configured".to_string()))?;
 
-    let result = sync::sync_repository(pool, &state.github, &owner, &repo).await?;
+    let client = state.client_for_owner(&owner)?;
+    let result = sync::sync_repository(pool, client.as_ref(), &owner, &repo).await?;
 
     Ok(Json(ApiResponse::ok(result)))
 }

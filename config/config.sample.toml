@@ -19,6 +19,24 @@
 #   base_url = "https://git.internal.corp/api/v3"
 
 # =============================================================================
+# Multi-Organization Support (optional)
+# =============================================================================
+# Configure per-organization tokens for multi-org reporting.
+# Each entry creates a dedicated GitHub client scoped to that org.
+# Tokens can also be set via GREPORT_ORG_<NAME>_TOKEN environment variables.
+#
+# [[organizations]]
+# name = "my-org"
+# token = "ghp_org_specific_token"
+# repos = ["api-service", "web-frontend"]
+#
+# [[organizations]]
+# name = "enterprise-org"
+# token = "ghp_enterprise_token"
+# base_url = "https://github.mycompany.com/api/v3"
+# repos = ["internal-api"]
+
+# =============================================================================
 # Default Settings
 # =============================================================================
 [defaults]

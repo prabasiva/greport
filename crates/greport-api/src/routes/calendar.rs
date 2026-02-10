@@ -473,6 +473,7 @@ pub async fn get_calendar(
     // (e.g., token lacking release permissions should not block issues/milestones)
     use greport_core::client::{GitHubClient, IssueParams, PullParams, RepoId};
 
+    let client = state.client_for_owner(&owner)?;
     let repo_id = RepoId::new(owner, repo);
     let mut issues = Vec::new();
     let mut milestones = Vec::new();
@@ -480,7 +481,7 @@ pub async fn get_calendar(
     let mut pulls = Vec::new();
 
     if types.iter().any(|t| t == "issues") {
-        match state.github.list_issues(&repo_id, IssueParams::all()).await {
+        match client.list_issues(&repo_id, IssueParams::all()).await {
             Ok(data) => issues = data,
             Err(e) => tracing::warn!(
                 "Calendar fallback: failed to fetch issues for {}: {}",
@@ -490,7 +491,7 @@ pub async fn get_calendar(
         }
     }
     if types.iter().any(|t| t == "milestones") {
-        match state.github.list_milestones(&repo_id).await {
+        match client.list_milestones(&repo_id).await {
             Ok(data) => milestones = data,
             Err(e) => tracing::warn!(
                 "Calendar fallback: failed to fetch milestones for {}: {}",
@@ -500,7 +501,7 @@ pub async fn get_calendar(
         }
     }
     if types.iter().any(|t| t == "releases") {
-        match state.github.list_releases(&repo_id).await {
+        match client.list_releases(&repo_id).await {
             Ok(data) => releases = data,
             Err(e) => tracing::warn!(
                 "Calendar fallback: failed to fetch releases for {}: {}",
@@ -510,7 +511,7 @@ pub async fn get_calendar(
         }
     }
     if types.iter().any(|t| t == "pulls") {
-        match state.github.list_pulls(&repo_id, PullParams::all()).await {
+        match client.list_pulls(&repo_id, PullParams::all()).await {
             Ok(all_pulls) => pulls = all_pulls.into_iter().filter(|p| p.merged).collect(),
             Err(e) => tracing::warn!(
                 "Calendar fallback: failed to fetch pulls for {}: {}",
