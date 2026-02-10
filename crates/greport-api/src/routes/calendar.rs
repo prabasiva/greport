@@ -83,6 +83,7 @@ fn build_calendar_events(
     types: &[String],
     start: NaiveDate,
     end: NaiveDate,
+    web_base: &str,
 ) -> Vec<CalendarEvent> {
     let mut events = Vec::new();
 
@@ -108,7 +109,7 @@ fn build_calendar_events(
                     repository: repo_name.to_string(),
                     labels: issue.labels.iter().map(|l| l.name.clone()).collect(),
                     milestone: issue.milestone.as_ref().map(|m| m.title.clone()),
-                    url: format!("https://github.com/{}/issues/{}", repo_name, issue.number),
+                    url: format!("{}/{}/issues/{}", web_base, repo_name, issue.number),
                 });
             }
 
@@ -125,7 +126,7 @@ fn build_calendar_events(
                         repository: repo_name.to_string(),
                         labels: issue.labels.iter().map(|l| l.name.clone()).collect(),
                         milestone: issue.milestone.as_ref().map(|m| m.title.clone()),
-                        url: format!("https://github.com/{}/issues/{}", repo_name, issue.number),
+                        url: format!("{}/{}/issues/{}", web_base, repo_name, issue.number),
                     });
                 }
             }
@@ -150,7 +151,7 @@ fn build_calendar_events(
                         repository: repo_name.to_string(),
                         labels: vec![],
                         milestone: Some(ms.title.clone()),
-                        url: format!("https://github.com/{}/milestone/{}", repo_name, ms.number),
+                        url: format!("{}/{}/milestone/{}", web_base, repo_name, ms.number),
                     });
                 }
             }
@@ -168,7 +169,7 @@ fn build_calendar_events(
                         repository: repo_name.to_string(),
                         labels: vec![],
                         milestone: Some(ms.title.clone()),
-                        url: format!("https://github.com/{}/milestone/{}", repo_name, ms.number),
+                        url: format!("{}/{}/milestone/{}", web_base, repo_name, ms.number),
                     });
                 }
             }
@@ -193,8 +194,8 @@ fn build_calendar_events(
                         labels: vec![],
                         milestone: None,
                         url: format!(
-                            "https://github.com/{}/releases/tag/{}",
-                            repo_name, release.tag_name
+                            "{}/{}/releases/tag/{}",
+                            web_base, repo_name, release.tag_name
                         ),
                     });
                 }
@@ -216,7 +217,7 @@ fn build_calendar_events(
                         repository: repo_name.to_string(),
                         labels: vec![],
                         milestone: None,
-                        url: format!("https://github.com/{}/pull/{}", repo_name, pr.number),
+                        url: format!("{}/{}/pull/{}", web_base, repo_name, pr.number),
                     });
                 }
             }
@@ -262,6 +263,7 @@ pub async fn get_calendar(
     let types = parse_types(query.types.as_deref());
 
     let repo_name = format!("{}/{}", owner, repo);
+    let web_base = state.web_url_for_owner(&owner);
 
     let start_dt = Utc.from_utc_datetime(
         &start
@@ -455,6 +457,7 @@ pub async fn get_calendar(
                 &types,
                 start,
                 end,
+                &web_base,
             );
             events.sort_by(|a, b| a.date.cmp(&b.date));
             let summary = compute_summary(&events);
@@ -530,6 +533,7 @@ pub async fn get_calendar(
         &types,
         start,
         end,
+        &web_base,
     );
     events.sort_by(|a, b| a.date.cmp(&b.date));
     let summary = compute_summary(&events);
@@ -586,6 +590,7 @@ pub async fn get_aggregate_calendar(
         let repo_owner = parts[0];
         let repo_name_part = parts[1];
         let repo_full_name = &tracked_repo.full_name;
+        let web_base = state.web_url_for_owner(repo_owner);
 
         let repo_db_id = match convert::get_repo_db_id(pool, repo_owner, repo_name_part).await {
             Some(id) => id,
@@ -747,6 +752,7 @@ pub async fn get_aggregate_calendar(
             &types,
             start,
             end,
+            &web_base,
         );
         all_events.extend(events);
     }
@@ -920,8 +926,17 @@ mod tests {
         let end = (Utc::now() + Duration::days(30)).date_naive();
         let types = vec!["issues".to_string()];
         let issues = vec![make_issue(1, "Bug fix", 5, true)];
-        let events =
-            build_calendar_events(&issues, &[], &[], &[], "owner/repo", &types, start, end);
+        let events = build_calendar_events(
+            &issues,
+            &[],
+            &[],
+            &[],
+            "owner/repo",
+            &types,
+            start,
+            end,
+            "https://github.com",
+        );
         assert_eq!(events.len(), 2);
         assert!(events
             .iter()
@@ -939,8 +954,17 @@ mod tests {
         let end = (Utc::now() + Duration::days(30)).date_naive();
         let types = vec!["milestones".to_string()];
         let milestones = vec![make_milestone(1, "v1.0", 15, false)];
-        let events =
-            build_calendar_events(&[], &milestones, &[], &[], "owner/repo", &types, start, end);
+        let events = build_calendar_events(
+            &[],
+            &milestones,
+            &[],
+            &[],
+            "owner/repo",
+            &types,
+            start,
+            end,
+            "https://github.com",
+        );
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, CalendarEventType::MilestoneDue);
         assert_eq!(events[0].title, "v1.0");
@@ -952,8 +976,17 @@ mod tests {
         let end = (Utc::now() + Duration::days(30)).date_naive();
         let types = vec!["releases".to_string()];
         let releases = vec![make_release("v1.0.0", 5)];
-        let events =
-            build_calendar_events(&[], &[], &releases, &[], "owner/repo", &types, start, end);
+        let events = build_calendar_events(
+            &[],
+            &[],
+            &releases,
+            &[],
+            "owner/repo",
+            &types,
+            start,
+            end,
+            "https://github.com",
+        );
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, CalendarEventType::ReleasePublished);
     }
@@ -964,7 +997,17 @@ mod tests {
         let end = (Utc::now() + Duration::days(30)).date_naive();
         let types = vec!["pulls".to_string()];
         let pulls = vec![make_merged_pr(10, "Add feature", 3)];
-        let events = build_calendar_events(&[], &[], &[], &pulls, "owner/repo", &types, start, end);
+        let events = build_calendar_events(
+            &[],
+            &[],
+            &[],
+            &pulls,
+            "owner/repo",
+            &types,
+            start,
+            end,
+            "https://github.com",
+        );
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, CalendarEventType::PrMerged);
         assert_eq!(events[0].number, Some(10));
@@ -986,6 +1029,7 @@ mod tests {
             &types,
             start,
             end,
+            "https://github.com",
         );
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, CalendarEventType::ReleasePublished);
@@ -997,8 +1041,17 @@ mod tests {
         let end = (Utc::now() + Duration::days(3)).date_naive();
         let types = vec!["issues".to_string()];
         let issues = vec![make_issue(1, "Old bug", 60, false)];
-        let events =
-            build_calendar_events(&issues, &[], &[], &[], "owner/repo", &types, start, end);
+        let events = build_calendar_events(
+            &issues,
+            &[],
+            &[],
+            &[],
+            "owner/repo",
+            &types,
+            start,
+            end,
+            "https://github.com",
+        );
         assert_eq!(events.len(), 0);
     }
 

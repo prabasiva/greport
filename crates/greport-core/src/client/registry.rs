@@ -159,6 +159,30 @@ impl GitHubClientRegistry {
         &self.org_entries
     }
 
+    /// Derive the web (non-API) base URL for a given organization/owner.
+    ///
+    /// For GitHub Enterprise orgs with a configured `base_url` like
+    /// `https://github.mycompany.com/api/v3`, this strips the `/api/v3`
+    /// suffix to produce `https://github.mycompany.com`.
+    ///
+    /// For public GitHub.com orgs (no `base_url`), returns `https://github.com`.
+    pub fn web_url_for_owner(&self, owner: &str) -> String {
+        let owner_lower = owner.to_lowercase();
+        for entry in &self.org_entries {
+            if entry.name.to_lowercase() == owner_lower {
+                if let Some(ref api_url) = entry.base_url {
+                    let trimmed = api_url.trim_end_matches('/');
+                    let web = trimmed
+                        .strip_suffix("/api/v3")
+                        .or_else(|| trimmed.strip_suffix("/api"))
+                        .unwrap_or(trimmed);
+                    return web.to_string();
+                }
+            }
+        }
+        "https://github.com".to_string()
+    }
+
     /// Validate all configured tokens by calling the GitHub rate_limit API.
     ///
     /// Returns the count of tokens that validated successfully.
@@ -357,5 +381,45 @@ mod tests {
         let client = registry.client_for_repo(&repo).unwrap();
         let org_client = registry.client_for_org("org-alpha").unwrap();
         assert!(Arc::ptr_eq(client, org_client));
+    }
+
+    #[tokio::test]
+    async fn test_registry_web_url_default() {
+        let config = config_with_orgs(Some("ghp_default"), vec![("org-alpha", "ghp_alpha", None)]);
+        let registry = GitHubClientRegistry::from_config(&config).unwrap();
+
+        // Public GitHub org -> default URL
+        assert_eq!(
+            registry.web_url_for_owner("org-alpha"),
+            "https://github.com"
+        );
+        // Unknown org -> default URL
+        assert_eq!(
+            registry.web_url_for_owner("unknown-org"),
+            "https://github.com"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_registry_web_url_enterprise() {
+        let config = config_with_orgs(
+            Some("ghp_default"),
+            vec![(
+                "enterprise-org",
+                "ghp_ent",
+                Some("https://github.mycompany.com/api/v3"),
+            )],
+        );
+        let registry = GitHubClientRegistry::from_config(&config).unwrap();
+
+        assert_eq!(
+            registry.web_url_for_owner("enterprise-org"),
+            "https://github.mycompany.com"
+        );
+        // Case-insensitive
+        assert_eq!(
+            registry.web_url_for_owner("Enterprise-Org"),
+            "https://github.mycompany.com"
+        );
     }
 }

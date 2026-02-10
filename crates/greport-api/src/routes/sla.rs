@@ -119,7 +119,15 @@ pub async fn get_sla_report(
         fetch_open_issues(&state, &owner, &repo, &query).await?
     };
 
-    let report = build_sla_report(&owner, &repo, &issues, response_hours, resolution_hours);
+    let web_base = state.web_url_for_owner(&owner);
+    let report = build_sla_report(
+        &owner,
+        &repo,
+        &issues,
+        response_hours,
+        resolution_hours,
+        &web_base,
+    );
 
     Ok(Json(ApiResponse::ok(report)))
 }
@@ -149,6 +157,7 @@ fn build_sla_report(
     issues: &[Issue],
     response_hours: i64,
     resolution_hours: i64,
+    web_base: &str,
 ) -> SlaReport {
     let now = Utc::now();
     let response_threshold = Duration::hours(response_hours);
@@ -171,10 +180,7 @@ fn build_sla_report(
         let age_hours = age.num_hours();
 
         let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
-        let url = format!(
-            "https://github.com/{}/{}/issues/{}",
-            owner, repo, issue.number
-        );
+        let url = format!("{}/{}/{}/issues/{}", web_base, owner, repo, issue.number);
 
         let sla_status = if age > resolution_threshold {
             resolution_breached += 1;

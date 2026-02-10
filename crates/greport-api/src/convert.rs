@@ -38,11 +38,15 @@ pub async fn has_synced_data(pool: &DbPool, repo_db_id: i64, data_type: &str) ->
 // Helper: synthesize a User from login + id stored in a DB row
 // ---------------------------------------------------------------------------
 fn user_from_db(login: &str, id: i64) -> User {
+    user_from_db_with_base(login, id, "https://github.com")
+}
+
+fn user_from_db_with_base(login: &str, id: i64, web_base: &str) -> User {
     User {
         id,
         login: login.to_string(),
         avatar_url: format!("https://avatars.githubusercontent.com/u/{}", id),
-        html_url: format!("https://github.com/{}", login),
+        html_url: format!("{}/{}", web_base, login),
     }
 }
 

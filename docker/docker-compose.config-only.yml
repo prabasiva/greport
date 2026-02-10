@@ -1,0 +1,92 @@
+# docker-compose.config-only.yml
+#
+# Multi-org deployment using only a mounted config file.
+# No environment variables needed -- all settings including tokens
+# are read from the config file.
+#
+# How it works:
+#   The API server (greport-api) calls Config::load(None) at startup,
+#   which reads from the default path:
+#
+#     /home/greport/.config/greport/config.toml
+#
+#   The Dockerfile creates this directory for the "greport" user.
+#   By mounting a host file to that path, the server picks it up
+#   automatically with no env var configuration required.
+#
+# Setup:
+#   1. Copy and edit the config file with real tokens:
+#        cp docker/config.multi-org.toml docker/my-config.toml
+#        # Edit docker/my-config.toml -- replace placeholder tokens
+#
+#   2. Start the stack:
+#        docker compose -f docker/docker-compose.config-only.yml up -d
+#
+#   3. Run CLI commands:
+#        docker compose -f docker/docker-compose.config-only.yml run --rm cli orgs list
+#        docker compose -f docker/docker-compose.config-only.yml run --rm cli --org my-org issues list
+#
+# WARNING: This approach puts tokens in the config file. Make sure
+#          my-config.toml is in .gitignore and not committed.
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    ports:
+      - "9423:9423"
+    environment:
+      # Only the database URL is needed as env var since the db
+      # hostname "db" is a docker-internal name not known at config time.
+      - DATABASE_URL=postgres://greport:greport@db:5432/greport
+    volumes:
+      # This is all that's needed. The API server reads this file
+      # at startup and gets orgs, tokens, repos, SLA, and all settings.
+      - ./my-config.toml:/home/greport/.config/greport/config.toml:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  cli:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.cli
+    volumes:
+      # Same config file -- CLI reads from the same default path
+      - ./my-config.toml:/home/greport/.config/greport/config.toml:ro
+    profiles:
+      - cli
+
+  dashboard:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dashboard
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:9423}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=greport
+      - POSTGRES_PASSWORD=greport
+      - POSTGRES_DB=greport
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U greport"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

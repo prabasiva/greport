@@ -34,6 +34,14 @@ impl AppState {
             ))
         })
     }
+
+    /// Get the web base URL for a given owner/org.
+    ///
+    /// Returns the GitHub Enterprise web URL if configured, otherwise
+    /// `https://github.com`.
+    pub fn web_url_for_owner(&self, owner: &str) -> String {
+        self.registry.web_url_for_owner(owner)
+    }
 }
 
 /// API configuration
