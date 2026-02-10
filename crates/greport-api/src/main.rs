@@ -74,7 +74,14 @@ async fn run() -> anyhow::Result<()> {
     let _ = dotenvy::dotenv();
 
     // Load config early for logging and bind address
-    let core_config = greport_core::Config::load(None).unwrap_or_default();
+    let core_config = match greport_core::Config::load(None) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            eprintln!("Warning: Failed to load config file: {}", e);
+            eprintln!("Falling back to defaults (env vars only).");
+            greport_core::Config::default()
+        }
+    };
 
     // Initialize tracing (env var > config.toml > default)
     tracing_subscriber::registry()

@@ -49,5 +49,10 @@ resolution_time_hours = 24
 response_time_hours = 8
 resolution_time_hours = 72
 
+[database]
+# Docker-internal hostname "db" resolves to the postgres container.
+# This can also be overridden via DATABASE_URL env var.
+url = "postgres://greport:greport@db:5432/greport"
+
 [logging]
 level = "info"
