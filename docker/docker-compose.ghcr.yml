@@ -1,20 +1,69 @@
+# docker-compose.ghcr.yml
+#
+# Pre-built images from GitHub Container Registry.
+# Supports single-org (env var only) and multi-org (config file + env vars).
+#
+# Single-org usage (minimal):
+#   export GITHUB_TOKEN=ghp_xxx
+#   docker compose -f docker/docker-compose.ghcr.yml up -d
+#
+# Multi-org usage:
+#   cp docker/.env.multi-org.example docker/.env.multi-org
+#   # Edit .env.multi-org with your actual tokens
+#   docker compose -f docker/docker-compose.ghcr.yml --env-file docker/.env.multi-org up -d
+#
+# CLI examples:
+#   docker compose -f docker/docker-compose.ghcr.yml run --rm cli orgs list
+#   docker compose -f docker/docker-compose.ghcr.yml run --rm cli --org my-org issues list
+#   docker compose -f docker/docker-compose.ghcr.yml run --rm cli -r my-org/api-service prs list
+
 services:
   api:
-    image: ghcr.io/prabasiva/greport/greport-api:0.7.1
+    image: ghcr.io/prabasiva/greport/greport-api:0.7.2
     platform: linux/amd64
     ports:
       - "9423:9423"
     environment:
+      # Database connection
       - DATABASE_URL=postgres://greport:${DB_PASSWORD:-greport}@db:5432/greport
+
+      # Fallback token for orgs without a dedicated token
       - GITHUB_TOKEN=${GITHUB_TOKEN}
+
+      # Per-org tokens (override placeholder values in config file)
+      # Naming: GREPORT_ORG_<UPPERCASE_NAME>_TOKEN (hyphens become underscores)
+      - GREPORT_ORG_MY_ORG_TOKEN=${GREPORT_ORG_MY_ORG_TOKEN:-}
+      - GREPORT_ORG_PARTNER_ORG_TOKEN=${GREPORT_ORG_PARTNER_ORG_TOKEN:-}
+      - GREPORT_ORG_ENTERPRISE_ORG_TOKEN=${GREPORT_ORG_ENTERPRISE_ORG_TOKEN:-}
+
+      # Logging
       - RUST_LOG=${RUST_LOG:-info,tower_http=debug}
+    volumes:
+      # Config file provides org names, repo lists, base URLs, and SLA settings.
+      # Mount is optional -- without it, single-org mode uses GITHUB_TOKEN only.
+      - ./config.multi-org.toml:/home/greport/.config/greport/config.toml:ro
     depends_on:
       db:
         condition: service_healthy
     restart: unless-stopped
 
+  cli:
+    image: ghcr.io/prabasiva/greport/greport-cli:0.7.2
+    platform: linux/amd64
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GREPORT_ORG_MY_ORG_TOKEN=${GREPORT_ORG_MY_ORG_TOKEN:-}
+      - GREPORT_ORG_PARTNER_ORG_TOKEN=${GREPORT_ORG_PARTNER_ORG_TOKEN:-}
+      - GREPORT_ORG_ENTERPRISE_ORG_TOKEN=${GREPORT_ORG_ENTERPRISE_ORG_TOKEN:-}
+      - RUST_LOG=${RUST_LOG:-info}
+    volumes:
+      # Same config file as the API -- repos and orgs stay in sync
+      - ./config.multi-org.toml:/home/greport/.config/greport/config.toml:ro
+    profiles:
+      - cli
+
   dashboard:
-    image: ghcr.io/prabasiva/greport/greport-dashboard:0.7.1
+    image: ghcr.io/prabasiva/greport/greport-dashboard:0.7.2
     platform: linux/amd64
     ports:
       - "3000:3000"
