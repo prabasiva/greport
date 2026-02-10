@@ -1,0 +1,53 @@
+# Multi-org config for docker compose
+#
+# Mount this file into the container at:
+#   /home/greport/.config/greport/config.toml
+#
+# Tokens can be set here or via environment variables.
+# Environment variables take precedence over values in this file.
+
+[github]
+# Fallback token for orgs not listed below.
+# Can also be set via GITHUB_TOKEN env var.
+# token = "ghp_your_default_token"
+
+# --- Organization: my-org ---
+[[organizations]]
+name = "my-org"
+# Token set via GREPORT_ORG_MY_ORG_TOKEN env var (preferred for secrets)
+token = "placeholder"
+repos = ["api-service", "web-frontend", "docs"]
+
+# --- Organization: partner-org ---
+[[organizations]]
+name = "partner-org"
+# Token set via GREPORT_ORG_PARTNER_ORG_TOKEN env var
+token = "placeholder"
+repos = ["sdk", "cli-tool"]
+
+# --- Organization: enterprise-org (GitHub Enterprise) ---
+[[organizations]]
+name = "enterprise-org"
+# Token set via GREPORT_ORG_ENTERPRISE_ORG_TOKEN env var
+token = "placeholder"
+base_url = "https://github.mycompany.com/api/v3"
+repos = ["internal-api", "platform"]
+
+[defaults]
+format = "table"
+cache_ttl = 3600
+
+[sla]
+response_time_hours = 24
+resolution_time_hours = 168
+
+[sla.priority.critical]
+response_time_hours = 4
+resolution_time_hours = 24
+
+[sla.priority.high]
+response_time_hours = 8
+resolution_time_hours = 72
+
+[logging]
+level = "info"

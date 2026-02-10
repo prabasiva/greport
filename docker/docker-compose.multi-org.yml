@@ -1,0 +1,109 @@
+# docker-compose.multi-org.yml
+#
+# Multi-organization deployment with per-org tokens and repos.
+#
+# Uses a mounted config file (config.multi-org.toml) for repo lists,
+# combined with environment variables for secrets (tokens).
+#
+# The config file defines which orgs and repos to track. Tokens in
+# the config file are set to "placeholder" and overridden at runtime
+# by GREPORT_ORG_<NAME>_TOKEN environment variables, keeping secrets
+# out of the config file.
+#
+# How it works:
+#   1. config.multi-org.toml defines orgs, repos, base_url, SLA, etc.
+#   2. GREPORT_ORG_*_TOKEN env vars override the placeholder tokens.
+#   3. GITHUB_TOKEN provides a fallback for any unconfigured org.
+#
+# Usage:
+#   cp docker/.env.multi-org.example docker/.env.multi-org
+#   # Edit .env.multi-org with your actual tokens
+#   docker compose -f docker/docker-compose.multi-org.yml --env-file docker/.env.multi-org up -d
+#
+# CLI examples:
+#   docker compose -f docker/docker-compose.multi-org.yml --env-file docker/.env.multi-org run --rm cli orgs list
+#   docker compose -f docker/docker-compose.multi-org.yml --env-file docker/.env.multi-org run --rm cli orgs show my-org
+#   docker compose -f docker/docker-compose.multi-org.yml --env-file docker/.env.multi-org run --rm cli --org my-org issues list
+#   docker compose -f docker/docker-compose.multi-org.yml --env-file docker/.env.multi-org run --rm cli -r partner-org/sdk prs list
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    ports:
+      - "9423:9423"
+    environment:
+      # Database connection
+      - DATABASE_URL=postgres://greport:${DB_PASSWORD:-greport}@db:5432/greport
+
+      # Fallback token for orgs without a dedicated token
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+
+      # Per-org tokens (override "placeholder" values in config file)
+      # Naming: GREPORT_ORG_<UPPERCASE_NAME>_TOKEN (hyphens become underscores)
+      #   "my-org"         -> GREPORT_ORG_MY_ORG_TOKEN
+      #   "partner-org"    -> GREPORT_ORG_PARTNER_ORG_TOKEN
+      #   "enterprise-org" -> GREPORT_ORG_ENTERPRISE_ORG_TOKEN
+      - GREPORT_ORG_MY_ORG_TOKEN=${GREPORT_ORG_MY_ORG_TOKEN}
+      - GREPORT_ORG_PARTNER_ORG_TOKEN=${GREPORT_ORG_PARTNER_ORG_TOKEN}
+      - GREPORT_ORG_ENTERPRISE_ORG_TOKEN=${GREPORT_ORG_ENTERPRISE_ORG_TOKEN:-}
+
+      # Logging
+      - RUST_LOG=${RUST_LOG:-info,tower_http=debug}
+    volumes:
+      # Config file provides org names, repo lists, base URLs, and SLA settings.
+      # Tokens are placeholders here -- real tokens come from env vars above.
+      - ./config.multi-org.toml:/home/greport/.config/greport/config.toml:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  cli:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.cli
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GREPORT_ORG_MY_ORG_TOKEN=${GREPORT_ORG_MY_ORG_TOKEN}
+      - GREPORT_ORG_PARTNER_ORG_TOKEN=${GREPORT_ORG_PARTNER_ORG_TOKEN}
+      - GREPORT_ORG_ENTERPRISE_ORG_TOKEN=${GREPORT_ORG_ENTERPRISE_ORG_TOKEN:-}
+      - RUST_LOG=${RUST_LOG:-info}
+    volumes:
+      # Same config file as the API -- repos and orgs stay in sync
+      - ./config.multi-org.toml:/home/greport/.config/greport/config.toml:ro
+    profiles:
+      - cli
+
+  dashboard:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dashboard
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:9423}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=greport
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-greport}
+      - POSTGRES_DB=greport
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U greport"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
