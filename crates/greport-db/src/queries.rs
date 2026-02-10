@@ -45,8 +45,8 @@ pub async fn upsert_repository(pool: &DbPool, input: &RepositoryInput) -> sqlx::
     sqlx::query(
         r#"
         INSERT INTO repositories (id, owner, name, full_name, description, private,
-                                  default_branch, created_at, updated_at, synced_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+                                  default_branch, org_name, created_at, updated_at, synced_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
         ON CONFLICT (id) DO UPDATE SET
             owner = EXCLUDED.owner,
             name = EXCLUDED.name,
@@ -54,6 +54,7 @@ pub async fn upsert_repository(pool: &DbPool, input: &RepositoryInput) -> sqlx::
             description = EXCLUDED.description,
             private = EXCLUDED.private,
             default_branch = EXCLUDED.default_branch,
+            org_name = COALESCE(EXCLUDED.org_name, repositories.org_name),
             updated_at = EXCLUDED.updated_at,
             synced_at = NOW()
         "#,
@@ -65,6 +66,7 @@ pub async fn upsert_repository(pool: &DbPool, input: &RepositoryInput) -> sqlx::
     .bind(&input.description)
     .bind(input.private)
     .bind(&input.default_branch)
+    .bind(&input.org_name)
     .bind(input.created_at)
     .bind(input.updated_at)
     .execute(pool)
@@ -992,6 +994,59 @@ pub async fn list_recent_releases(
     )
     .bind(repository_id)
     .bind(since)
+    .fetch_all(pool)
+    .await
+}
+
+// =============================================================================
+// Organization queries
+// =============================================================================
+
+/// Upsert organization
+pub async fn upsert_organization(pool: &DbPool, input: &OrganizationInput) -> sqlx::Result<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO organizations (name, base_url)
+        VALUES ($1, $2)
+        ON CONFLICT (name) DO UPDATE SET
+            base_url = EXCLUDED.base_url
+        "#,
+    )
+    .bind(&input.name)
+    .bind(&input.base_url)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// List all organizations
+pub async fn list_organizations(pool: &DbPool) -> sqlx::Result<Vec<OrganizationRow>> {
+    sqlx::query_as::<_, OrganizationRow>("SELECT * FROM organizations ORDER BY name")
+        .fetch_all(pool)
+        .await
+}
+
+/// Get organization by name
+pub async fn get_organization_by_name(
+    pool: &DbPool,
+    name: &str,
+) -> sqlx::Result<Option<OrganizationRow>> {
+    sqlx::query_as::<_, OrganizationRow>("SELECT * FROM organizations WHERE name = $1")
+        .bind(name)
+        .fetch_optional(pool)
+        .await
+}
+
+/// List repositories belonging to a specific organization
+pub async fn list_repositories_by_org(
+    pool: &DbPool,
+    org_name: &str,
+) -> sqlx::Result<Vec<RepositoryRow>> {
+    sqlx::query_as::<_, RepositoryRow>(
+        "SELECT * FROM repositories WHERE org_name = $1 ORDER BY full_name",
+    )
+    .bind(org_name)
     .fetch_all(pool)
     .await
 }

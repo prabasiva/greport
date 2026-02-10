@@ -204,6 +204,11 @@ async fn run() -> anyhow::Result<()> {
         return commands::config::handle_config(&args.command);
     }
 
+    // Handle orgs command separately (doesn't need GitHub client)
+    if let Commands::Orgs(args) = &cli.command {
+        return commands::orgs::handle_orgs(&args.command, &cfg);
+    }
+
     // Build client registry (supports multi-org and single-token configs)
     let has_orgs = !cfg.organizations.is_empty();
     let registry = if has_orgs {
@@ -251,6 +256,12 @@ async fn run() -> anyhow::Result<()> {
         GitHubClientRegistry::with_default(client)
     };
     info!("GitHub client initialized successfully");
+
+    // Validate tokens when verbose mode is enabled
+    if cli.verbose {
+        let valid = registry.validate_tokens().await;
+        info!(valid_tokens = valid, "Token validation complete");
+    }
 
     // Resolve repository target using precedence rules:
     // 1. -r org/repo  -> Single repo (highest priority)
@@ -363,7 +374,7 @@ async fn execute_command(
         Commands::Sync(args) => {
             commands::sync::handle_sync(client.as_ref(), repo, args.clone()).await?;
         }
-        Commands::Config(_) => {
+        Commands::Config(_) | Commands::Orgs(_) => {
             unreachable!()
         }
     }

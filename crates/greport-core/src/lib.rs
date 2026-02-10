@@ -13,6 +13,6 @@ pub mod metrics;
 pub mod models;
 pub mod reports;
 
-pub use client::{GitHubClient, GitHubClientRegistry, OctocrabClient, RepoId};
+pub use client::{GitHubClient, GitHubClientRegistry, OctocrabClient, OrgEntry, RepoId};
 pub use config::{Config, OrgConfig};
 pub use error::{Error, Result};

@@ -12,7 +12,7 @@ pub use retry::RetryConfig;
 
 pub use octocrab_client::OctocrabClient;
 pub use params::*;
-pub use registry::GitHubClientRegistry;
+pub use registry::{GitHubClientRegistry, OrgEntry};
 
 #[cfg(any(test, feature = "mock"))]
 pub use mock_client::{MockData, MockGitHubClient};

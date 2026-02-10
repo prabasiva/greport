@@ -54,6 +54,9 @@ pub enum Commands {
 
     /// Sync data from GitHub
     Sync(SyncArgs),
+
+    /// Organization management
+    Orgs(OrgsArgs),
 }
 
 // Issues commands
@@ -264,6 +267,25 @@ pub enum ConfigCommands {
 
     /// Show configuration file path
     Path,
+}
+
+// Orgs commands
+#[derive(Parser)]
+pub struct OrgsArgs {
+    #[command(subcommand)]
+    pub command: OrgsCommands,
+}
+
+#[derive(Subcommand)]
+pub enum OrgsCommands {
+    /// List configured organizations
+    List,
+
+    /// Show details for a specific organization
+    Show {
+        /// Organization name
+        name: String,
+    },
 }
 
 // Sync command

@@ -218,6 +218,7 @@ fn repo_to_input(repo: &Repository) -> RepositoryInput {
         description: repo.description.clone(),
         private: repo.private,
         default_branch: repo.default_branch.clone(),
+        org_name: Some(repo.owner.clone()),
         created_at: repo.created_at,
         updated_at: repo.updated_at,
     }

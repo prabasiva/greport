@@ -15,6 +15,7 @@ pub struct RepositoryRow {
     pub description: Option<String>,
     pub private: bool,
     pub default_branch: String,
+    pub org_name: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub synced_at: DateTime<Utc>,
@@ -164,6 +165,7 @@ pub struct RepositoryInput {
     pub description: Option<String>,
     pub private: bool,
     pub default_branch: String,
+    pub org_name: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -242,6 +244,23 @@ pub struct ReleaseInput {
     pub author_id: i64,
     pub created_at: DateTime<Utc>,
     pub published_at: Option<DateTime<Utc>>,
+}
+
+/// Organization record
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct OrganizationRow {
+    pub id: Uuid,
+    pub name: String,
+    pub base_url: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub last_synced_at: Option<DateTime<Utc>>,
+}
+
+/// Input for creating/updating an organization
+#[derive(Debug, Clone)]
+pub struct OrganizationInput {
+    pub name: String,
+    pub base_url: Option<String>,
 }
 
 /// Input for creating an API key

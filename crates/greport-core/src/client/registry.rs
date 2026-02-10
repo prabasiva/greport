@@ -3,12 +3,29 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use serde::Serialize;
 use tracing::{debug, info, warn};
 
+use crate::client::GitHubClient;
 use crate::client::OctocrabClient;
 use crate::client::RepoId;
 use crate::config::Config;
 use crate::{Error, Result};
+
+/// Summary metadata about a configured organization.
+#[derive(Debug, Clone, Serialize)]
+pub struct OrgEntry {
+    /// Organization name
+    pub name: String,
+    /// GitHub API base URL (None = public github.com)
+    pub base_url: Option<String>,
+    /// Number of configured repos
+    pub repo_count: usize,
+    /// Configured repository names
+    pub repo_names: Vec<String>,
+    /// Whether a token is configured
+    pub has_token: bool,
+}
 
 /// Registry that manages multiple GitHub clients, one per organization.
 ///
@@ -20,6 +37,7 @@ use crate::{Error, Result};
 pub struct GitHubClientRegistry {
     clients: HashMap<String, Arc<OctocrabClient>>,
     default_client: Option<Arc<OctocrabClient>>,
+    org_entries: Vec<OrgEntry>,
 }
 
 impl GitHubClientRegistry {
@@ -28,6 +46,7 @@ impl GitHubClientRegistry {
         Self {
             clients: HashMap::new(),
             default_client: Some(Arc::new(client)),
+            org_entries: Vec::new(),
         }
     }
 
@@ -65,9 +84,25 @@ impl GitHubClientRegistry {
             "GitHub client registry initialized"
         );
 
+        let org_entries: Vec<OrgEntry> = config
+            .organizations
+            .iter()
+            .map(|org| {
+                let repos = org.repos.as_deref().unwrap_or_default();
+                OrgEntry {
+                    name: org.name.clone(),
+                    base_url: org.base_url.clone(),
+                    repo_count: repos.len(),
+                    repo_names: repos.iter().map(|r| r.to_string()).collect(),
+                    has_token: !org.token.is_empty(),
+                }
+            })
+            .collect();
+
         Ok(Self {
             clients,
             default_client,
+            org_entries,
         })
     }
 
@@ -117,6 +152,51 @@ impl GitHubClientRegistry {
     /// Check if a specific organization is configured.
     pub fn has_org(&self, org: &str) -> bool {
         self.clients.contains_key(&org.to_lowercase())
+    }
+
+    /// Get metadata entries for all configured organizations.
+    pub fn org_entries(&self) -> &[OrgEntry] {
+        &self.org_entries
+    }
+
+    /// Validate all configured tokens by calling the GitHub rate_limit API.
+    ///
+    /// Returns the count of tokens that validated successfully.
+    /// Failures are logged as warnings but are non-fatal.
+    pub async fn validate_tokens(&self) -> usize {
+        let mut valid = 0usize;
+
+        // Validate default client
+        if let Some(ref client) = self.default_client {
+            match client.rate_limit().await {
+                Ok(info) => {
+                    info!(
+                        remaining = info.remaining,
+                        limit = info.limit,
+                        "Default token validated"
+                    );
+                    valid += 1;
+                }
+                Err(e) => {
+                    warn!(error = %e, "Default token validation failed");
+                }
+            }
+        }
+
+        // Validate per-org clients
+        for (org_name, client) in &self.clients {
+            match client.rate_limit().await {
+                Ok(info) => {
+                    info!(org = %org_name, remaining = info.remaining, limit = info.limit, "Org token validated");
+                    valid += 1;
+                }
+                Err(e) => {
+                    warn!(org = %org_name, error = %e, "Org token validation failed");
+                }
+            }
+        }
+
+        valid
     }
 }
 

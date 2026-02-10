@@ -192,6 +192,26 @@ fn default_resolution_time() -> i64 {
     168 // 7 days
 }
 
+/// Mask a token for display: shows first 4 chars + `****` + last 4 chars.
+/// For tokens with 8 or fewer characters, shows first 4 + `****`.
+pub fn mask_token(token: &str) -> String {
+    if token.len() <= 8 {
+        let prefix: String = token.chars().take(4).collect();
+        format!("{}****", prefix)
+    } else {
+        let prefix: String = token.chars().take(4).collect();
+        let suffix: String = token
+            .chars()
+            .rev()
+            .take(4)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        format!("{}****{}", prefix, suffix)
+    }
+}
+
 impl Config {
     /// Load configuration from file
     pub fn load(path: Option<&PathBuf>) -> crate::Result<Self> {
@@ -589,6 +609,24 @@ token = "ghp_beta"
         assert_eq!(all[0].full_name(), "org-alpha/api");
         assert_eq!(all[1].full_name(), "org-beta/sdk");
         assert_eq!(all[2].full_name(), "org-beta/cli");
+    }
+
+    #[test]
+    fn test_mask_token_long() {
+        let masked = super::mask_token("ghp_abcdefghij1234");
+        assert_eq!(masked, "ghp_****1234");
+    }
+
+    #[test]
+    fn test_mask_token_short() {
+        let masked = super::mask_token("ghp_abcd");
+        assert_eq!(masked, "ghp_****");
+    }
+
+    #[test]
+    fn test_mask_token_very_short() {
+        let masked = super::mask_token("abc");
+        assert_eq!(masked, "abc****");
     }
 
     #[test]

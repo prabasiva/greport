@@ -96,6 +96,10 @@ async fn run() -> anyhow::Result<()> {
     // Create application state with pre-loaded config
     let state = AppState::with_core_config(core_config.clone()).await?;
 
+    // Validate tokens at startup (non-fatal)
+    let valid = state.registry.validate_tokens().await;
+    tracing::info!(valid_tokens = valid, "Token validation complete");
+
     // Start rate limiter cleanup task
     start_cleanup_task(Arc::clone(&state.rate_limiter));
 
@@ -202,6 +206,12 @@ fn build_router(state: AppState) -> Router {
         )
         // Batch sync (all tracked repos)
         .route("/sync", axum::routing::post(routes::batch::batch_sync))
+        // Organizations
+        .route("/orgs", axum::routing::get(routes::orgs::list_orgs))
+        .route(
+            "/orgs/{org}/repos",
+            axum::routing::get(routes::orgs::list_org_repos),
+        )
         // Aggregate lists
         .route(
             "/aggregate/issues",
@@ -227,6 +237,15 @@ fn build_router(state: AppState) -> Router {
         .route(
             "/aggregate/velocity",
             axum::routing::get(routes::aggregate::aggregate_velocity),
+        )
+        // Cross-org aggregate
+        .route(
+            "/aggregate/orgs/issues",
+            axum::routing::get(routes::aggregate::aggregate_org_issues),
+        )
+        .route(
+            "/aggregate/orgs/pulls",
+            axum::routing::get(routes::aggregate::aggregate_org_pulls),
         )
         .route(
             "/aggregate/calendar",
