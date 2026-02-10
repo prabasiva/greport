@@ -312,20 +312,7 @@ export default function SettingsPage() {
         <dl className="mt-4 space-y-2 text-sm">
           <div className="flex gap-2">
             <dt className="font-medium text-gray-500 dark:text-gray-400">Version:</dt>
-            <dd className="text-gray-900 dark:text-white">0.5.0</dd>
-          </div>
-          <div className="flex gap-2">
-            <dt className="font-medium text-gray-500 dark:text-gray-400">Source:</dt>
-            <dd>
-              <a
-                href="https://github.com/prabasiva/greport"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
-              >
-                github.com/prabasiva/greport
-              </a>
-            </dd>
+            <dd className="text-gray-900 dark:text-white">0.7.2</dd>
           </div>
         </dl>
       </div>

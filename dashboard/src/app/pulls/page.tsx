@@ -31,6 +31,8 @@ export default function PullsPage() {
 function AggregatePullsView() {
   const [state, setState] = useState("all");
   const [days, setDays] = useState("all");
+  const [repoFilter, setRepoFilter] = useState("all");
+  const [authorFilter, setAuthorFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [selectedPull, setSelectedPull] = useState<AggregatePullItem | null>(null);
   const perPage = 30;
@@ -54,6 +56,15 @@ function AggregatePullsView() {
   const metrics = metricsData?.data;
   const pulls = listData?.data || [];
   const meta = listData?.meta;
+
+  const repos = [...new Set(pulls.map(p => p.repository))].sort();
+  const authors = [...new Set(pulls.map(p => p.author.login))].sort();
+
+  const filtered = pulls.filter(p => {
+    if (repoFilter !== "all" && p.repository !== repoFilter) return false;
+    if (authorFilter !== "all" && p.author.login !== authorFilter) return false;
+    return true;
+  });
 
   const sizeData = metrics
     ? Object.entries(metrics.by_size).map(([name, value]) => ({ name, value }))
@@ -191,8 +202,28 @@ function AggregatePullsView() {
               { label: "All time", value: "all" },
             ],
           },
+          {
+            key: "repo",
+            label: "Repository",
+            value: repoFilter,
+            onChange: (v) => { setRepoFilter(v); setPage(1); },
+            options: [
+              { label: "All", value: "all" },
+              ...repos.map(r => ({ label: r.split("/").pop() || r, value: r })),
+            ],
+          },
+          {
+            key: "author",
+            label: "Author",
+            value: authorFilter,
+            onChange: (v) => { setAuthorFilter(v); setPage(1); },
+            options: [
+              { label: "All", value: "all" },
+              ...authors.map(a => ({ label: a, value: a })),
+            ],
+          },
         ]}
-        onClear={() => { setState("all"); setDays("all"); setPage(1); }}
+        onClear={() => { setState("all"); setDays("all"); setRepoFilter("all"); setAuthorFilter("all"); setPage(1); }}
       />
 
       {metrics && (
@@ -211,7 +242,7 @@ function AggregatePullsView() {
       <div className="overflow-hidden rounded-lg border border-gray-200 shadow-sm dark:border-gray-800">
         <DataTable
           columns={columns}
-          data={pulls}
+          data={filtered}
           keyExtractor={(pr) => `${pr.repository}-${pr.id}`}
           onRowClick={(item) => setSelectedPull(item)}
           emptyMessage="No pull requests found matching the filters"

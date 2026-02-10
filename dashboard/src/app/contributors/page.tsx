@@ -5,6 +5,7 @@ import { useRepo } from "@/hooks/use-repo";
 import { useContributors, useAggregateContributors } from "@/hooks/use-api";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { BarChartComponent } from "@/components/charts/bar-chart-component";
+import { FilterPanel } from "@/components/shared/filter-panel";
 import { PageLoading } from "@/components/shared/loading";
 import { ErrorDisplay, NoRepoSelected } from "@/components/shared/error-display";
 import type { ContributorStats, AggregateContributorStats } from "@/types/api";
@@ -22,6 +23,8 @@ export default function ContributorsPage() {
 
 function AggregateContributorsView() {
   const [sortBy, setSortBy] = useState("prs");
+  const [repoFilter, setRepoFilter] = useState("all");
+  const [authorFilter, setAuthorFilter] = useState("all");
 
   const { data, error, isLoading } = useAggregateContributors();
 
@@ -30,7 +33,16 @@ function AggregateContributorsView() {
 
   const contributors = data?.data || [];
 
-  const sorted = [...contributors].sort((a, b) => {
+  const allRepos = [...new Set(contributors.flatMap(c => c.repositories))].sort();
+  const allAuthors = [...new Set(contributors.map(c => c.login))].sort();
+
+  const filtered = contributors.filter(c => {
+    if (repoFilter !== "all" && !c.repositories.includes(repoFilter)) return false;
+    if (authorFilter !== "all" && c.login !== authorFilter) return false;
+    return true;
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
     if (sortBy === "prs") return b.total_prs_merged - a.total_prs_merged;
     return b.total_issues_created - a.total_issues_created;
   });
@@ -109,21 +121,41 @@ function AggregateContributorsView() {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-            Sort by
-          </label>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-          >
-            <option value="prs">PRs Merged</option>
-            <option value="issues">Issues Created</option>
-          </select>
-        </div>
-      </div>
+      <FilterPanel
+        filters={[
+          {
+            key: "sortBy",
+            label: "Sort by",
+            value: sortBy,
+            onChange: setSortBy,
+            options: [
+              { label: "PRs Merged", value: "prs" },
+              { label: "Issues Created", value: "issues" },
+            ],
+          },
+          {
+            key: "repo",
+            label: "Repository",
+            value: repoFilter,
+            onChange: setRepoFilter,
+            options: [
+              { label: "All", value: "all" },
+              ...allRepos.map(r => ({ label: r.split("/").pop() || r, value: r })),
+            ],
+          },
+          {
+            key: "author",
+            label: "Contributor",
+            value: authorFilter,
+            onChange: setAuthorFilter,
+            options: [
+              { label: "All", value: "all" },
+              ...allAuthors.map(a => ({ label: a, value: a })),
+            ],
+          },
+        ]}
+        onClear={() => { setSortBy("prs"); setRepoFilter("all"); setAuthorFilter("all"); }}
+      />
 
       {chartData.length > 0 && (
         <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">

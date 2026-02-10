@@ -30,6 +30,8 @@ export default function IssuesPage() {
 function AggregateIssuesView() {
   const [state, setState] = useState("all");
   const [days, setDays] = useState("all");
+  const [repoFilter, setRepoFilter] = useState("all");
+  const [authorFilter, setAuthorFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [selectedIssue, setSelectedIssue] = useState<AggregateIssueItem | null>(null);
   const perPage = 30;
@@ -53,6 +55,15 @@ function AggregateIssuesView() {
   const metrics = metricsData?.data;
   const issues = listData?.data || [];
   const meta = listData?.meta;
+
+  const repos = [...new Set(issues.map(i => i.repository))].sort();
+  const authors = [...new Set(issues.map(i => i.author.login))].sort();
+
+  const filtered = issues.filter(i => {
+    if (repoFilter !== "all" && i.repository !== repoFilter) return false;
+    if (authorFilter !== "all" && i.author.login !== authorFilter) return false;
+    return true;
+  });
 
   const labelData = metrics
     ? Object.entries(metrics.by_label)
@@ -183,8 +194,28 @@ function AggregateIssuesView() {
               { label: "All time", value: "all" },
             ],
           },
+          {
+            key: "repo",
+            label: "Repository",
+            value: repoFilter,
+            onChange: (v) => { setRepoFilter(v); setPage(1); },
+            options: [
+              { label: "All", value: "all" },
+              ...repos.map(r => ({ label: r.split("/").pop() || r, value: r })),
+            ],
+          },
+          {
+            key: "author",
+            label: "Author",
+            value: authorFilter,
+            onChange: (v) => { setAuthorFilter(v); setPage(1); },
+            options: [
+              { label: "All", value: "all" },
+              ...authors.map(a => ({ label: a, value: a })),
+            ],
+          },
         ]}
-        onClear={() => { setState("all"); setDays("all"); setPage(1); }}
+        onClear={() => { setState("all"); setDays("all"); setRepoFilter("all"); setAuthorFilter("all"); setPage(1); }}
       />
 
       {metrics && (
@@ -200,7 +231,7 @@ function AggregateIssuesView() {
       <div className="overflow-hidden rounded-lg border border-gray-200 shadow-sm dark:border-gray-800">
         <DataTable
           columns={columns}
-          data={issues}
+          data={filtered}
           keyExtractor={(i) => `${i.repository}-${i.id}`}
           onRowClick={(item) => setSelectedIssue(item)}
           emptyMessage="No issues found matching the filters"
