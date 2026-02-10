@@ -289,6 +289,14 @@ export interface BatchSyncResult {
   synced_at: string;
 }
 
+// Organizations
+
+export interface OrgSummary {
+  name: string;
+  base_url?: string;
+  repo_count: number;
+}
+
 // Aggregate metrics
 
 export interface RepoIssueMetrics {

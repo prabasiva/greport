@@ -225,6 +225,11 @@ export async function batchSync(): Promise<ApiResponse<BatchSyncResult>> {
   });
 }
 
+// Organizations
+export function orgsUrl(): string {
+  return "/api/v1/orgs";
+}
+
 // Aggregate lists
 export function aggregateIssuesUrl(params?: { state?: string; days?: number; page?: number; per_page?: number }): string {
   return `/api/v1/aggregate/issues${buildQuery(params || {})}`;

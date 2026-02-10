@@ -13,6 +13,7 @@ import {
   releaseNotesUrl,
   slaUrl,
   contributorsUrl,
+  orgsUrl,
   aggregateIssuesUrl,
   aggregatePullsUrl,
   aggregateIssueMetricsUrl,
@@ -37,6 +38,7 @@ import type {
   ReleaseNotes,
   SlaReportResponse,
   ContributorStats,
+  OrgSummary,
   AggregateIssueItem,
   AggregatePullItem,
   AggregateIssueMetrics,
@@ -164,6 +166,12 @@ export function useContributors(
   );
 }
 
+
+// Organizations
+
+export function useOrgs() {
+  return useApi<ApiResponse<OrgSummary[]>>(orgsUrl());
+}
 
 // Aggregate hooks
 

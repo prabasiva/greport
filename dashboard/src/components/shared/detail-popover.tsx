@@ -1,6 +1,7 @@
 "use client";
 
 import type { Issue, PullRequest, AggregateIssueItem, AggregatePullItem } from "@/types/api";
+import { useOrgs } from "@/hooks/use-api";
 import { formatDate, labelColor } from "@/lib/utils";
 
 type DetailItem = Issue | PullRequest | AggregateIssueItem | AggregatePullItem;
@@ -17,8 +18,18 @@ function isPullRequest(item: DetailItem): item is PullRequest | AggregatePullIte
 }
 
 export function DetailPopover({ item, owner, repo, onClose }: DetailPopoverProps) {
+  const { data: orgsData } = useOrgs();
   const isPr = isPullRequest(item);
-  const url = `https://github.com/${owner}/${repo}/${isPr ? "pull" : "issues"}/${item.number}`;
+
+  let webBase = "https://github.com";
+  if (orgsData?.data) {
+    const org = orgsData.data.find(o => o.name.toLowerCase() === owner.toLowerCase());
+    if (org?.base_url) {
+      const trimmed = org.base_url.replace(/\/+$/, "");
+      webBase = trimmed.replace(/\/api\/v3$/, "").replace(/\/api$/, "");
+    }
+  }
+  const url = `${webBase}/${owner}/${repo}/${isPr ? "pull" : "issues"}/${item.number}`;
 
   // State badge
   let stateLabel: string;
