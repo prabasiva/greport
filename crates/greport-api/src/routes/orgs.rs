@@ -14,8 +14,15 @@ use crate::state::AppState;
 #[derive(Serialize)]
 pub struct OrgSummary {
     pub name: String,
-    pub base_url: Option<String>,
+    pub web_url: String,
     pub repo_count: usize,
+}
+
+/// Response for the orgs list endpoint.
+#[derive(Serialize)]
+pub struct OrgsListResponse {
+    pub orgs: Vec<OrgSummary>,
+    pub default_web_url: String,
 }
 
 /// Repository entry within an organization.
@@ -30,19 +37,24 @@ pub struct OrgRepoEntry {
 /// List all configured organizations.
 pub async fn list_orgs(
     State(state): State<AppState>,
-) -> Result<Json<ApiResponse<Vec<OrgSummary>>>, ApiError> {
+) -> Result<Json<ApiResponse<OrgsListResponse>>, ApiError> {
     let entries = state.registry.org_entries();
 
     let orgs: Vec<OrgSummary> = entries
         .iter()
         .map(|e| OrgSummary {
             name: e.name.clone(),
-            base_url: e.base_url.clone(),
+            web_url: state.web_url_for_owner(&e.name),
             repo_count: e.repo_count,
         })
         .collect();
 
-    Ok(Json(ApiResponse::ok(orgs)))
+    let default_web_url = state.registry.default_web_url();
+
+    Ok(Json(ApiResponse::ok(OrgsListResponse {
+        orgs,
+        default_web_url,
+    })))
 }
 
 /// GET /api/v1/orgs/{org}/repos

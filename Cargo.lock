@@ -1077,7 +1077,7 @@ dependencies = [
 
 [[package]]
 name = "greport-api"
-version = "0.1.0"
+version = "0.7.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -1103,7 +1103,7 @@ dependencies = [
 
 [[package]]
 name = "greport-cli"
-version = "0.1.0"
+version = "0.7.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1125,7 +1125,7 @@ dependencies = [
 
 [[package]]
 name = "greport-core"
-version = "0.1.0"
+version = "0.7.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1145,7 +1145,7 @@ dependencies = [
 
 [[package]]
 name = "greport-db"
-version = "0.1.0"
+version = "0.7.2"
 dependencies = [
  "anyhow",
  "chrono",

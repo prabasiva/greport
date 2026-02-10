@@ -355,7 +355,14 @@ function IssuesContent({ owner, repo }: { owner: string; repo: string }) {
     per_page: perPage,
     days: days !== "all" ? Number(days) : undefined,
   });
-  const { data: metricsData } = useIssueMetrics(owner, repo);
+  const metricsParams: { state?: string; days?: number } = {};
+  if (state !== "all") metricsParams.state = state;
+  if (days !== "all") metricsParams.days = Number(days);
+  const { data: metricsData } = useIssueMetrics(
+    owner,
+    repo,
+    Object.keys(metricsParams).length > 0 ? metricsParams : undefined,
+  );
 
   if (isLoading) return <PageLoading />;
   if (error) return <ErrorDisplay message={error.message} />;

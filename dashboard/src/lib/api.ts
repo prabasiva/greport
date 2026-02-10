@@ -88,8 +88,12 @@ export function issuesUrl(
   return `/api/v1/repos/${owner}/${repo}/issues${buildQuery(params || {})}`;
 }
 
-export function issueMetricsUrl(owner: string, repo: string): string {
-  return `/api/v1/repos/${owner}/${repo}/issues/metrics`;
+export function issueMetricsUrl(
+  owner: string,
+  repo: string,
+  params?: { state?: string; days?: number },
+): string {
+  return `/api/v1/repos/${owner}/${repo}/issues/metrics${buildQuery(params || {})}`;
 }
 
 export function velocityUrl(
@@ -125,8 +129,12 @@ export function pullsUrl(
   return `/api/v1/repos/${owner}/${repo}/pulls${buildQuery(params || {})}`;
 }
 
-export function pullMetricsUrl(owner: string, repo: string): string {
-  return `/api/v1/repos/${owner}/${repo}/pulls/metrics`;
+export function pullMetricsUrl(
+  owner: string,
+  repo: string,
+  params?: { state?: string; days?: number },
+): string {
+  return `/api/v1/repos/${owner}/${repo}/pulls/metrics${buildQuery(params || {})}`;
 }
 
 // Releases

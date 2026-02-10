@@ -12,6 +12,20 @@ use crate::client::RepoId;
 use crate::config::Config;
 use crate::{Error, Result};
 
+/// Derive the web (non-API) URL from a GitHub API base URL.
+///
+/// Strips `/api/v3` or `/api` suffixes to produce the browsable web URL.
+/// For example, `https://github.mycompany.com/api/v3` becomes
+/// `https://github.mycompany.com`.
+fn derive_web_url(api_url: &str) -> String {
+    let trimmed = api_url.trim_end_matches('/');
+    trimmed
+        .strip_suffix("/api/v3")
+        .or_else(|| trimmed.strip_suffix("/api"))
+        .unwrap_or(trimmed)
+        .to_string()
+}
+
 /// Summary metadata about a configured organization.
 #[derive(Debug, Clone, Serialize)]
 pub struct OrgEntry {
@@ -37,15 +51,17 @@ pub struct OrgEntry {
 pub struct GitHubClientRegistry {
     clients: HashMap<String, Arc<OctocrabClient>>,
     default_client: Option<Arc<OctocrabClient>>,
+    default_base_url: Option<String>,
     org_entries: Vec<OrgEntry>,
 }
 
 impl GitHubClientRegistry {
     /// Create a registry with only a default client (no per-org entries).
-    pub fn with_default(client: OctocrabClient) -> Self {
+    pub fn with_default(client: OctocrabClient, base_url: Option<String>) -> Self {
         Self {
             clients: HashMap::new(),
             default_client: Some(Arc::new(client)),
+            default_base_url: base_url,
             org_entries: Vec::new(),
         }
     }
@@ -102,6 +118,7 @@ impl GitHubClientRegistry {
         Ok(Self {
             clients,
             default_client,
+            default_base_url: config.github.base_url.clone(),
             org_entries,
         })
     }
@@ -161,26 +178,36 @@ impl GitHubClientRegistry {
 
     /// Derive the web (non-API) base URL for a given organization/owner.
     ///
-    /// For GitHub Enterprise orgs with a configured `base_url` like
-    /// `https://github.mycompany.com/api/v3`, this strips the `/api/v3`
-    /// suffix to produce `https://github.mycompany.com`.
-    ///
-    /// For public GitHub.com orgs (no `base_url`), returns `https://github.com`.
+    /// Resolution order:
+    /// 1. If the org is found in `org_entries` with a `base_url`, derive the web URL.
+    /// 2. If the org is found but has no `base_url`, return `https://github.com`.
+    /// 3. If the org is not found, fall back to `default_base_url` (legacy mode).
+    /// 4. Last resort: `https://github.com`.
     pub fn web_url_for_owner(&self, owner: &str) -> String {
         let owner_lower = owner.to_lowercase();
         for entry in &self.org_entries {
             if entry.name.to_lowercase() == owner_lower {
-                if let Some(ref api_url) = entry.base_url {
-                    let trimmed = api_url.trim_end_matches('/');
-                    let web = trimmed
-                        .strip_suffix("/api/v3")
-                        .or_else(|| trimmed.strip_suffix("/api"))
-                        .unwrap_or(trimmed);
-                    return web.to_string();
-                }
+                return match entry.base_url {
+                    Some(ref api_url) => derive_web_url(api_url),
+                    None => "https://github.com".to_string(),
+                };
             }
         }
-        "https://github.com".to_string()
+        // Org not found in entries -- use default_base_url (legacy mode)
+        match self.default_base_url {
+            Some(ref api_url) => derive_web_url(api_url),
+            None => "https://github.com".to_string(),
+        }
+    }
+
+    /// Get the default web URL (for links not tied to a specific owner).
+    ///
+    /// Uses `default_base_url` if configured, otherwise `https://github.com`.
+    pub fn default_web_url(&self) -> String {
+        match self.default_base_url {
+            Some(ref api_url) => derive_web_url(api_url),
+            None => "https://github.com".to_string(),
+        }
     }
 
     /// Validate all configured tokens by calling the GitHub rate_limit API.
@@ -421,5 +448,56 @@ mod tests {
             registry.web_url_for_owner("Enterprise-Org"),
             "https://github.mycompany.com"
         );
+    }
+
+    #[tokio::test]
+    async fn test_legacy_mode_with_base_url() {
+        // Legacy mode: no [[organizations]], just [github] with a base_url
+        let client = OctocrabClient::new("ghp_test", Some("https://ghe.corp.com/api/v3")).unwrap();
+        let registry = GitHubClientRegistry::with_default(
+            client,
+            Some("https://ghe.corp.com/api/v3".to_string()),
+        );
+
+        // Any owner should resolve to the GHE web URL
+        assert_eq!(
+            registry.web_url_for_owner("any-org"),
+            "https://ghe.corp.com"
+        );
+        assert_eq!(registry.default_web_url(), "https://ghe.corp.com");
+    }
+
+    #[tokio::test]
+    async fn test_legacy_mode_without_base_url() {
+        // Legacy mode: no [[organizations]], no base_url -> github.com
+        let client = OctocrabClient::new("ghp_test", None).unwrap();
+        let registry = GitHubClientRegistry::with_default(client, None);
+
+        assert_eq!(
+            registry.web_url_for_owner("any-org"),
+            "https://github.com"
+        );
+        assert_eq!(registry.default_web_url(), "https://github.com");
+    }
+
+    #[tokio::test]
+    async fn test_from_config_stores_default_base_url() {
+        // from_config with a default base_url should store it
+        let config = Config {
+            github: GitHubConfig {
+                token: Some("ghp_default".to_string()),
+                base_url: Some("https://ghe.corp.com/api/v3".to_string()),
+            },
+            organizations: vec![],
+            ..Default::default()
+        };
+        let registry = GitHubClientRegistry::from_config(&config).unwrap();
+
+        // Unknown org falls back to default_base_url
+        assert_eq!(
+            registry.web_url_for_owner("unknown-org"),
+            "https://ghe.corp.com"
+        );
+        assert_eq!(registry.default_web_url(), "https://ghe.corp.com");
     }
 }

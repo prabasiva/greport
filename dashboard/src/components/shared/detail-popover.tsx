@@ -23,11 +23,8 @@ export function DetailPopover({ item, owner, repo, onClose }: DetailPopoverProps
 
   let webBase = "https://github.com";
   if (orgsData?.data) {
-    const org = orgsData.data.find(o => o.name.toLowerCase() === owner.toLowerCase());
-    if (org?.base_url) {
-      const trimmed = org.base_url.replace(/\/+$/, "");
-      webBase = trimmed.replace(/\/api\/v3$/, "").replace(/\/api$/, "");
-    }
+    const org = orgsData.data.orgs.find(o => o.name.toLowerCase() === owner.toLowerCase());
+    webBase = org?.web_url ?? orgsData.data.default_web_url ?? "https://github.com";
   }
   const url = `${webBase}/${owner}/${repo}/${isPr ? "pull" : "issues"}/${item.number}`;
 

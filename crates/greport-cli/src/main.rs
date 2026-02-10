@@ -253,7 +253,7 @@ async fn run() -> anyhow::Result<()> {
         // Build a registry with just the default client
         let client = OctocrabClient::new(&token, base_url.as_deref())?;
         // Wrap in a minimal registry so all code paths use the same type
-        GitHubClientRegistry::with_default(client)
+        GitHubClientRegistry::with_default(client, base_url)
     };
     info!("GitHub client initialized successfully");
 

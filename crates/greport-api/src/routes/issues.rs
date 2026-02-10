@@ -102,17 +102,25 @@ pub async fn list_issues(
     )))
 }
 
+#[derive(Deserialize)]
+pub struct MetricsQuery {
+    state: Option<String>,
+    days: Option<i64>,
+}
+
 pub async fn get_metrics(
     State(state): State<AppState>,
     Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<MetricsQuery>,
 ) -> Result<Json<ApiResponse<IssueMetrics>>, ApiError> {
     // DB-first
     if let Some(pool) = &state.db {
         if let Some(repo_db_id) = convert::get_repo_db_id(pool, &owner, &repo).await {
             if convert::has_synced_data(pool, repo_db_id, "issues").await {
                 let issues = convert::issues_from_db(pool, repo_db_id, None, None).await?;
+                let filtered = filter_issues_by(issues, query.state.as_deref(), query.days);
                 let calculator = IssueMetricsCalculator::new(30);
-                let metrics = calculator.calculate(&issues);
+                let metrics = calculator.calculate(&filtered);
                 return Ok(Json(ApiResponse::ok(metrics)));
             }
         }
@@ -134,8 +142,9 @@ pub async fn get_metrics(
         }
     };
 
+    let filtered = filter_issues_by(issues, query.state.as_deref(), query.days);
     let calculator = IssueMetricsCalculator::new(30);
-    let metrics = calculator.calculate(&issues);
+    let metrics = calculator.calculate(&filtered);
 
     Ok(Json(ApiResponse::ok(metrics)))
 }
@@ -278,4 +287,21 @@ pub async fn get_stale(
     let stale: Vec<_> = issues.into_iter().filter(|i| i.is_stale(days)).collect();
 
     Ok(Json(ApiResponse::ok(stale)))
+}
+
+fn filter_issues_by(issues: Vec<Issue>, state: Option<&str>, days: Option<i64>) -> Vec<Issue> {
+    use greport_core::models::IssueState;
+    let cutoff = days.map(|d| Utc::now() - chrono::Duration::days(d));
+    issues
+        .into_iter()
+        .filter(|i| match state {
+            Some("open") => i.state == IssueState::Open,
+            Some("closed") => i.state == IssueState::Closed,
+            _ => true,
+        })
+        .filter(|i| match cutoff {
+            Some(c) => i.created_at >= c,
+            None => true,
+        })
+        .collect()
 }

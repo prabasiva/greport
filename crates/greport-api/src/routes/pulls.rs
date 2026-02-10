@@ -91,16 +91,24 @@ pub async fn list_pulls(
     )))
 }
 
+#[derive(Deserialize)]
+pub struct MetricsQuery {
+    state: Option<String>,
+    days: Option<i64>,
+}
+
 pub async fn get_metrics(
     State(state): State<AppState>,
     Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<MetricsQuery>,
 ) -> Result<Json<ApiResponse<PullMetrics>>, ApiError> {
     // DB-first
     if let Some(pool) = &state.db {
         if let Some(repo_db_id) = convert::get_repo_db_id(pool, &owner, &repo).await {
             if convert::has_synced_data(pool, repo_db_id, "pulls").await {
                 let prs = convert::pulls_from_db(pool, repo_db_id, None, None).await?;
-                let metrics = PullMetricsCalculator::calculate(&prs);
+                let filtered = filter_pulls_by(prs, query.state.as_deref(), query.days);
+                let metrics = PullMetricsCalculator::calculate(&filtered);
                 return Ok(Json(ApiResponse::ok(metrics)));
             }
         }
@@ -122,7 +130,29 @@ pub async fn get_metrics(
         }
     };
 
-    let metrics = PullMetricsCalculator::calculate(&prs);
+    let filtered = filter_pulls_by(prs, query.state.as_deref(), query.days);
+    let metrics = PullMetricsCalculator::calculate(&filtered);
 
     Ok(Json(ApiResponse::ok(metrics)))
+}
+
+fn filter_pulls_by(
+    pulls: Vec<PullRequest>,
+    state: Option<&str>,
+    days: Option<i64>,
+) -> Vec<PullRequest> {
+    use greport_core::models::PullState;
+    let cutoff = days.map(|d| Utc::now() - chrono::Duration::days(d));
+    pulls
+        .into_iter()
+        .filter(|p| match state {
+            Some("open") => p.state == PullState::Open,
+            Some("closed") => p.state == PullState::Closed,
+            _ => true,
+        })
+        .filter(|p| match cutoff {
+            Some(c) => p.created_at >= c,
+            None => true,
+        })
+        .collect()
 }

@@ -293,8 +293,13 @@ export interface BatchSyncResult {
 
 export interface OrgSummary {
   name: string;
-  base_url?: string;
+  web_url: string;
   repo_count: number;
+}
+
+export interface OrgsListResponse {
+  orgs: OrgSummary[];
+  default_web_url: string;
 }
 
 // Aggregate metrics

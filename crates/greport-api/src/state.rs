@@ -125,7 +125,7 @@ impl AppState {
             }
 
             let client = OctocrabClient::new(&token, base_url.as_deref())?;
-            Arc::new(GitHubClientRegistry::with_default(client))
+            Arc::new(GitHubClientRegistry::with_default(client, base_url))
         };
         tracing::info!("GitHub client registry initialized");
 
@@ -181,7 +181,7 @@ impl AppState {
     pub fn test_state(github: OctocrabClient) -> Self {
         let config = ApiConfig::default();
         Self {
-            registry: Arc::new(GitHubClientRegistry::with_default(github)),
+            registry: Arc::new(GitHubClientRegistry::with_default(github, None)),
             config: Arc::new(config.clone()),
             db: None,
             rate_limiter: Arc::new(RateLimiter::new(config.rate_limit_per_minute)),

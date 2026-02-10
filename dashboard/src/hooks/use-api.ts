@@ -38,7 +38,7 @@ import type {
   ReleaseNotes,
   SlaReportResponse,
   ContributorStats,
-  OrgSummary,
+  OrgsListResponse,
   AggregateIssueItem,
   AggregatePullItem,
   AggregateIssueMetrics,
@@ -79,9 +79,13 @@ export function useIssues(
   );
 }
 
-export function useIssueMetrics(owner: string, repo: string) {
+export function useIssueMetrics(
+  owner: string,
+  repo: string,
+  params?: { state?: string; days?: number },
+) {
   return useApi<ApiResponse<IssueMetrics>>(
-    owner && repo ? issueMetricsUrl(owner, repo) : null,
+    owner && repo ? issueMetricsUrl(owner, repo, params) : null,
   );
 }
 
@@ -117,9 +121,13 @@ export function usePulls(
   );
 }
 
-export function usePullMetrics(owner: string, repo: string) {
+export function usePullMetrics(
+  owner: string,
+  repo: string,
+  params?: { state?: string; days?: number },
+) {
   return useApi<ApiResponse<PullMetrics>>(
-    owner && repo ? pullMetricsUrl(owner, repo) : null,
+    owner && repo ? pullMetricsUrl(owner, repo, params) : null,
   );
 }
 
@@ -170,7 +178,7 @@ export function useContributors(
 // Organizations
 
 export function useOrgs() {
-  return useApi<ApiResponse<OrgSummary[]>>(orgsUrl());
+  return useApi<ApiResponse<OrgsListResponse>>(orgsUrl());
 }
 
 // Aggregate hooks
