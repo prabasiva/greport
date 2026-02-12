@@ -41,6 +41,12 @@ dirs = "5.0"
 # TOML parsing
 toml = "0.8"
 
+# HTTP client (for GraphQL)
+reqwest = { workspace = true }
+
+# Ordered maps (preserve field option ordering)
+indexmap = { version = "2", features = ["serde"] }
+
 
 [dev-dependencies]
 mockall = { workspace = true }

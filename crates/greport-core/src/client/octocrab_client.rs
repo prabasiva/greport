@@ -1,12 +1,14 @@
 //! Octocrab-based GitHub client implementation
 
+use super::graphql::GraphQLClient;
 use super::retry::RetryConfig;
 use super::{
-    GitHubClient, IssueParams, IssueStateFilter, PullParams, PullStateFilter, RateLimitInfo, RepoId,
+    GitHubClient, IssueParams, IssueStateFilter, ProjectClient, PullParams, PullStateFilter,
+    RateLimitInfo, RepoId,
 };
 use crate::models::{
-    Issue, IssueEvent, IssueState, Label, Milestone, MilestoneState, PullRequest, PullState,
-    Release, Repository, Review, User,
+    Issue, IssueEvent, IssueState, Label, Milestone, MilestoneState, Project, ProjectItem,
+    PullRequest, PullState, Release, Repository, Review, User,
 };
 use crate::{Error, Result};
 use async_trait::async_trait;
@@ -118,12 +120,14 @@ fn log_api_error(operation: &str, endpoint: &str, err: &octocrab::Error) {
 pub struct OctocrabClient {
     client: Octocrab,
     retry_config: RetryConfig,
+    graphql: GraphQLClient,
 }
 
 impl std::fmt::Debug for OctocrabClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OctocrabClient")
             .field("retry_config", &self.retry_config)
+            .field("graphql", &self.graphql)
             .finish_non_exhaustive()
     }
 }
@@ -162,10 +166,13 @@ impl OctocrabClient {
             .build()
             .map_err(|e| Error::Custom(format!("Failed to create GitHub client: {}", e)))?;
 
+        let graphql = GraphQLClient::new(token, base_url)?;
+
         debug!("GitHub client created successfully");
         Ok(Self {
             client,
             retry_config: RetryConfig::default(),
+            graphql,
         })
     }
 
@@ -958,5 +965,20 @@ impl GitHubClient for OctocrabClient {
             limit: rate_limit.resources.core.limit as u32,
             reset: rate_limit.resources.core.reset,
         })
+    }
+}
+
+#[async_trait]
+impl ProjectClient for OctocrabClient {
+    async fn list_projects(&self, org: &str) -> Result<Vec<Project>> {
+        self.graphql.list_org_projects(org).await
+    }
+
+    async fn get_project(&self, org: &str, project_number: u64) -> Result<Project> {
+        self.graphql.get_project_detail(org, project_number).await
+    }
+
+    async fn list_project_items(&self, project_node_id: &str) -> Result<Vec<ProjectItem>> {
+        self.graphql.list_items(project_node_id).await
     }
 }
