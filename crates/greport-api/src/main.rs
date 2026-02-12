@@ -197,6 +197,23 @@ fn build_router(state: AppState) -> Router {
             "/repos/{owner}/{repo}/sla",
             axum::routing::get(routes::sla::get_sla_report),
         )
+        // Projects
+        .route(
+            "/orgs/{org}/projects",
+            axum::routing::get(routes::projects::list_projects),
+        )
+        .route(
+            "/orgs/{org}/projects/{number}",
+            axum::routing::get(routes::projects::get_project),
+        )
+        .route(
+            "/orgs/{org}/projects/{number}/items",
+            axum::routing::get(routes::projects::list_project_items),
+        )
+        .route(
+            "/orgs/{org}/projects/{number}/metrics",
+            axum::routing::get(routes::projects::get_project_metrics),
+        )
         // Sync
         .route(
             "/repos/{owner}/{repo}/sync",
@@ -244,6 +261,10 @@ fn build_router(state: AppState) -> Router {
         .route(
             "/aggregate/velocity",
             axum::routing::get(routes::aggregate::aggregate_velocity),
+        )
+        .route(
+            "/aggregate/projects",
+            axum::routing::get(routes::projects::aggregate_projects),
         )
         // Cross-org aggregate
         .route(
