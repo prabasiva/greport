@@ -245,10 +245,10 @@ query($nodeId: ID!, $first: Int!, $after: String) {
 /// Derive the GraphQL endpoint URL from an optional REST API base URL.
 ///
 /// Resolution rules:
-///   None                            -> https://api.github.com/graphql
-///   https://ghe.co/api/v3          -> https://ghe.co/api/graphql
-///   https://ghe.co/api             -> https://ghe.co/api/graphql
-///   https://ghe.co                 -> https://ghe.co/api/graphql
+///   None                            -> <https://api.github.com/graphql>
+///   <https://ghe.co/api/v3>          -> <https://ghe.co/api/graphql>
+///   <https://ghe.co/api>             -> <https://ghe.co/api/graphql>
+///   <https://ghe.co>                 -> <https://ghe.co/api/graphql>
 pub fn derive_graphql_url(base_url: Option<&str>) -> String {
     match base_url {
         None => "https://api.github.com/graphql".to_string(),
@@ -354,13 +354,12 @@ impl GraphQLClient {
 
         debug!(body_len = body_text.len(), "GraphQL response received");
 
-        let gql_response: GraphQLResponse<T> = serde_json::from_str(&body_text)
-            .map_err(|e| {
-                // Log a truncated snippet of the body for debugging
-                let snippet: String = body_text.chars().take(500).collect();
-                warn!(error = %e, body_snippet = %snippet, "Failed to parse GraphQL response");
-                Error::GraphQL(format!("Failed to parse GraphQL response: {}", e))
-            })?;
+        let gql_response: GraphQLResponse<T> = serde_json::from_str(&body_text).map_err(|e| {
+            // Log a truncated snippet of the body for debugging
+            let snippet: String = body_text.chars().take(500).collect();
+            warn!(error = %e, body_snippet = %snippet, "Failed to parse GraphQL response");
+            Error::GraphQL(format!("Failed to parse GraphQL response: {}", e))
+        })?;
 
         if let Some(errors) = gql_response.errors {
             if !errors.is_empty() {
@@ -385,7 +384,10 @@ impl GraphQLClient {
         match self.list_projects_as_org(org).await {
             Ok(projects) => Ok(projects),
             Err(Error::NotFound(_)) => {
-                debug!(login = org, "Not an organization, trying user projects query");
+                debug!(
+                    login = org,
+                    "Not an organization, trying user projects query"
+                );
                 self.list_projects_as_user(org).await
             }
             Err(e) => Err(e),
@@ -430,14 +432,21 @@ impl GraphQLClient {
             let owner_data = match extract(data) {
                 Some(d) => d,
                 None => {
-                    debug!(login = login, "Owner returned null, returning empty projects list");
+                    debug!(
+                        login = login,
+                        "Owner returned null, returning empty projects list"
+                    );
                     return Ok(Vec::new());
                 }
             };
             let connection = owner_data.projects_v2;
             let null_count = connection.nodes.iter().filter(|n| n.is_none()).count();
             if null_count > 0 {
-                warn!(login = login, null_count = null_count, "Some projects not accessible (token may need read:project scope)");
+                warn!(
+                    login = login,
+                    null_count = null_count,
+                    "Some projects not accessible (token may need read:project scope)"
+                );
             }
 
             for node in connection.nodes.into_iter().flatten() {
@@ -451,30 +460,35 @@ impl GraphQLClient {
             }
         }
 
-        debug!(login = login, count = all_projects.len(), "Fetched projects");
+        debug!(
+            login = login,
+            count = all_projects.len(),
+            "Fetched projects"
+        );
         Ok(all_projects)
     }
 
     /// Get a single project with field definitions.
     ///
     /// Tries the organization query first, falls back to user query.
-    pub async fn get_project_detail(
-        &self,
-        org: &str,
-        project_number: u64,
-    ) -> Result<Project> {
-        let gql_project = match self.get_project_detail_inner(
-            GET_PROJECT_WITH_FIELDS,
-            "org",
-            org,
-            project_number,
-            |d: OrgProjectDetailData| d.organization,
-        )
-        .await
+    pub async fn get_project_detail(&self, org: &str, project_number: u64) -> Result<Project> {
+        let gql_project = match self
+            .get_project_detail_inner(
+                GET_PROJECT_WITH_FIELDS,
+                "org",
+                org,
+                project_number,
+                |d: OrgProjectDetailData| d.organization,
+            )
+            .await
         {
             Ok(p) => p,
             Err(Error::NotFound(_)) => {
-                debug!(login = org, number = project_number, "Not an organization, trying user project query");
+                debug!(
+                    login = org,
+                    number = project_number,
+                    "Not an organization, trying user project query"
+                );
                 self.get_project_detail_inner(
                     GET_USER_PROJECT_WITH_FIELDS,
                     "login",
@@ -527,11 +541,13 @@ impl GraphQLClient {
         });
 
         let data: T = self.query(query_str, variables).await?;
-        let owner_data = extract(data).ok_or_else(|| {
-            Error::NotFound(format!("'{}' not found or not accessible", login))
-        })?;
+        let owner_data = extract(data)
+            .ok_or_else(|| Error::NotFound(format!("'{}' not found or not accessible", login)))?;
         owner_data.project_v2.ok_or_else(|| {
-            Error::NotFound(format!("Project #{} not found for '{}'", project_number, login))
+            Error::NotFound(format!(
+                "Project #{} not found for '{}'",
+                project_number, login
+            ))
         })
     }
 
@@ -914,8 +930,15 @@ fn convert_field(gql: &GqlField) -> ProjectField {
                 .unwrap_or_default();
             ProjectFieldType::Iteration { iterations }
         }
-        "TITLE" | "ASSIGNEES" | "LABELS" | "MILESTONE" | "REPOSITORY" | "REVIEWERS"
-        | "LINKED_PULL_REQUESTS" | "TRACKS" | "TRACKED_BY" => ProjectFieldType::BuiltIn,
+        "TITLE"
+        | "ASSIGNEES"
+        | "LABELS"
+        | "MILESTONE"
+        | "REPOSITORY"
+        | "REVIEWERS"
+        | "LINKED_PULL_REQUESTS"
+        | "TRACKS"
+        | "TRACKED_BY" => ProjectFieldType::BuiltIn,
         _ => {
             warn!(data_type = data_type, name = %name, "Unknown field type, treating as BuiltIn");
             ProjectFieldType::BuiltIn
@@ -1064,10 +1087,7 @@ mod tests {
 
     #[test]
     fn test_derive_graphql_url_github_com() {
-        assert_eq!(
-            derive_graphql_url(None),
-            "https://api.github.com/graphql"
-        );
+        assert_eq!(derive_graphql_url(None), "https://api.github.com/graphql");
     }
 
     #[test]
@@ -1145,7 +1165,14 @@ mod tests {
 
         let resp: GraphQLResponse<OrgProjectsData> = serde_json::from_str(json).unwrap();
         let data = resp.data.unwrap();
-        let nodes: Vec<GqlProject> = data.organization.unwrap().projects_v2.nodes.into_iter().flatten().collect();
+        let nodes: Vec<GqlProject> = data
+            .organization
+            .unwrap()
+            .projects_v2
+            .nodes
+            .into_iter()
+            .flatten()
+            .collect();
 
         assert_eq!(nodes.len(), 2);
         assert_eq!(nodes[0].number, 5);
@@ -1437,7 +1464,8 @@ mod tests {
     #[test]
     fn test_classify_not_found_error() {
         let errors = vec![GraphQLError {
-            message: "Could not resolve to an Organization with the login of 'nonexistent'".to_string(),
+            message: "Could not resolve to an Organization with the login of 'nonexistent'"
+                .to_string(),
             error_type: Some("NOT_FOUND".to_string()),
         }];
 

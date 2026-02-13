@@ -135,7 +135,9 @@ pub async fn get_project(
 
     let project = greport_db::queries::get_project(pool, &org, number)
         .await?
-        .ok_or_else(|| ApiError::NotFound(format!("Project {} not found for org {}", number, org)))?;
+        .ok_or_else(|| {
+            ApiError::NotFound(format!("Project {} not found for org {}", number, org))
+        })?;
 
     let field_rows = greport_db::queries::list_project_fields(pool, &project.node_id).await?;
     let fields: Vec<ProjectFieldSummary> = field_rows.iter().map(field_row_to_summary).collect();
@@ -168,7 +170,9 @@ pub async fn list_project_items(
 
     let project = greport_db::queries::get_project(pool, &org, number)
         .await?
-        .ok_or_else(|| ApiError::NotFound(format!("Project {} not found for org {}", number, org)))?;
+        .ok_or_else(|| {
+            ApiError::NotFound(format!("Project {} not found for org {}", number, org))
+        })?;
 
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(30).min(100);
@@ -198,8 +202,7 @@ pub async fn list_project_items(
     )
     .await?;
 
-    let response_items: Vec<ProjectItemResponse> =
-        items.iter().map(item_row_to_response).collect();
+    let response_items: Vec<ProjectItemResponse> = items.iter().map(item_row_to_response).collect();
 
     Ok(Json(PaginatedResponse::new(
         response_items,
@@ -221,7 +224,9 @@ pub async fn get_project_metrics(
 
     let project = greport_db::queries::get_project(pool, &org, number)
         .await?
-        .ok_or_else(|| ApiError::NotFound(format!("Project {} not found for org {}", number, org)))?;
+        .ok_or_else(|| {
+            ApiError::NotFound(format!("Project {} not found for org {}", number, org))
+        })?;
 
     // Status breakdown
     let status_rows =
@@ -233,15 +238,9 @@ pub async fn get_project_metrics(
         .collect();
 
     // Content type breakdown
-    let all_items = greport_db::queries::list_project_items(
-        pool,
-        &project.node_id,
-        None,
-        None,
-        None,
-        None,
-    )
-    .await?;
+    let all_items =
+        greport_db::queries::list_project_items(pool, &project.node_id, None, None, None, None)
+            .await?;
 
     let mut type_counts: HashMap<String, i64> = HashMap::new();
     for item in &all_items {
@@ -281,8 +280,7 @@ pub async fn aggregate_projects(
     let mut all_summaries: Vec<ProjectSummary> = Vec::new();
 
     for entry in state.registry.org_entries() {
-        let rows =
-            greport_db::queries::list_projects(pool, &entry.name, include_closed).await?;
+        let rows = greport_db::queries::list_projects(pool, &entry.name, include_closed).await?;
         all_summaries.extend(rows.iter().map(project_row_to_summary));
     }
 

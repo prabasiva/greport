@@ -490,68 +490,75 @@ fn field_to_input(field: &ProjectField, project_id: &str) -> ProjectFieldInput {
 }
 
 fn item_to_input(item: &ProjectItem, project_id: &str) -> ProjectItemInput {
-    let (content_type, content_number, content_title, content_state, content_url, content_repository, content_json) =
-        match &item.content {
-            ProjectItemContent::Issue {
-                number,
-                title,
-                state,
-                url,
-                repository,
-                assignees,
-                labels,
-            } => (
-                "issue".to_string(),
-                Some(*number as i64),
-                title.clone(),
-                Some(state.clone()),
-                Some(url.clone()),
-                Some(repository.clone()),
-                serde_json::to_value(serde_json::json!({
-                    "assignees": assignees,
-                    "labels": labels,
-                }))
-                .ok(),
-            ),
-            ProjectItemContent::PullRequest {
-                number,
-                title,
-                state,
-                url,
-                repository,
-                merged,
-                author,
-            } => (
-                "pull_request".to_string(),
-                Some(*number as i64),
-                title.clone(),
-                Some(state.clone()),
-                Some(url.clone()),
-                Some(repository.clone()),
-                serde_json::to_value(serde_json::json!({
-                    "merged": merged,
-                    "author": author,
-                }))
-                .ok(),
-            ),
-            ProjectItemContent::DraftIssue {
-                title,
-                body,
-                assignees,
-            } => (
-                "draft_issue".to_string(),
-                None,
-                title.clone(),
-                None,
-                None,
-                None,
-                serde_json::to_value(serde_json::json!({
-                    "body": body,
-                    "assignees": assignees,
-                }))
-                .ok(),
-            ),
-        };
+    let (
+        content_type,
+        content_number,
+        content_title,
+        content_state,
+        content_url,
+        content_repository,
+        content_json,
+    ) = match &item.content {
+        ProjectItemContent::Issue {
+            number,
+            title,
+            state,
+            url,
+            repository,
+            assignees,
+            labels,
+        } => (
+            "issue".to_string(),
+            Some(*number as i64),
+            title.clone(),
+            Some(state.clone()),
+            Some(url.clone()),
+            Some(repository.clone()),
+            serde_json::to_value(serde_json::json!({
+                "assignees": assignees,
+                "labels": labels,
+            }))
+            .ok(),
+        ),
+        ProjectItemContent::PullRequest {
+            number,
+            title,
+            state,
+            url,
+            repository,
+            merged,
+            author,
+        } => (
+            "pull_request".to_string(),
+            Some(*number as i64),
+            title.clone(),
+            Some(state.clone()),
+            Some(url.clone()),
+            Some(repository.clone()),
+            serde_json::to_value(serde_json::json!({
+                "merged": merged,
+                "author": author,
+            }))
+            .ok(),
+        ),
+        ProjectItemContent::DraftIssue {
+            title,
+            body,
+            assignees,
+        } => (
+            "draft_issue".to_string(),
+            None,
+            title.clone(),
+            None,
+            None,
+            None,
+            serde_json::to_value(serde_json::json!({
+                "body": body,
+                "assignees": assignees,
+            }))
+            .ok(),
+        ),
+    };
 
     // Serialize field values as a JSON array
     let field_values_json = if item.field_values.is_empty() {

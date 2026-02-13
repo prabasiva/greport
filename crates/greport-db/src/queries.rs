@@ -1096,12 +1096,10 @@ pub async fn list_projects(
     include_closed: bool,
 ) -> sqlx::Result<Vec<ProjectRow>> {
     if include_closed {
-        sqlx::query_as::<_, ProjectRow>(
-            "SELECT * FROM projects WHERE owner = $1 ORDER BY number",
-        )
-        .bind(owner)
-        .fetch_all(pool)
-        .await
+        sqlx::query_as::<_, ProjectRow>("SELECT * FROM projects WHERE owner = $1 ORDER BY number")
+            .bind(owner)
+            .fetch_all(pool)
+            .await
     } else {
         sqlx::query_as::<_, ProjectRow>(
             "SELECT * FROM projects WHERE owner = $1 AND closed = FALSE ORDER BY number",
@@ -1118,13 +1116,11 @@ pub async fn get_project(
     owner: &str,
     number: i64,
 ) -> sqlx::Result<Option<ProjectRow>> {
-    sqlx::query_as::<_, ProjectRow>(
-        "SELECT * FROM projects WHERE owner = $1 AND number = $2",
-    )
-    .bind(owner)
-    .bind(number)
-    .fetch_optional(pool)
-    .await
+    sqlx::query_as::<_, ProjectRow>("SELECT * FROM projects WHERE owner = $1 AND number = $2")
+        .bind(owner)
+        .bind(number)
+        .fetch_optional(pool)
+        .await
 }
 
 /// Get project by node ID
@@ -1144,13 +1140,11 @@ pub async fn delete_stale_projects(
     owner: &str,
     current_node_ids: &[String],
 ) -> sqlx::Result<u64> {
-    let result = sqlx::query(
-        "DELETE FROM projects WHERE owner = $1 AND node_id != ALL($2)",
-    )
-    .bind(owner)
-    .bind(current_node_ids)
-    .execute(pool)
-    .await?;
+    let result = sqlx::query("DELETE FROM projects WHERE owner = $1 AND node_id != ALL($2)")
+        .bind(owner)
+        .bind(current_node_ids)
+        .execute(pool)
+        .await?;
     Ok(result.rows_affected())
 }
 
