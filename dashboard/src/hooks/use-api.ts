@@ -24,6 +24,11 @@ import {
   aggregateCalendarUrl,
   releasePlanUrl,
   aggregateReleasePlanUrl,
+  projectsUrl,
+  projectDetailUrl,
+  projectItemsUrl,
+  projectMetricsUrl,
+  aggregateProjectsUrl,
 } from "@/lib/api";
 import type {
   ApiResponse,
@@ -47,6 +52,10 @@ import type {
   AggregateVelocityMetrics,
   CalendarData,
   ReleasePlan,
+  ProjectSummary,
+  ProjectDetail,
+  ProjectItemResponse,
+  ProjectMetrics,
 } from "@/types/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9423";
@@ -262,5 +271,52 @@ export function useAggregateReleasePlan(
 ) {
   return useApi<ApiResponse<ReleasePlan>>(
     aggregateReleasePlanUrl(params),
+  );
+}
+
+// Projects hooks
+
+export function useProjects(
+  org: string,
+  params?: { include_closed?: boolean },
+) {
+  return useApi<ApiResponse<ProjectSummary[]>>(
+    org ? projectsUrl(org, params) : null,
+  );
+}
+
+export function useProjectDetail(
+  org: string,
+  number: number | null,
+) {
+  return useApi<ApiResponse<ProjectDetail>>(
+    org && number !== null ? projectDetailUrl(org, number) : null,
+  );
+}
+
+export function useProjectItems(
+  org: string,
+  number: number | null,
+  params?: { content_type?: string; state?: string; page?: number; per_page?: number },
+) {
+  return useApi<PaginatedResponse<ProjectItemResponse>>(
+    org && number !== null ? projectItemsUrl(org, number, params) : null,
+  );
+}
+
+export function useProjectMetrics(
+  org: string,
+  number: number | null,
+) {
+  return useApi<ApiResponse<ProjectMetrics>>(
+    org && number !== null ? projectMetricsUrl(org, number) : null,
+  );
+}
+
+export function useAggregateProjects(
+  params?: { include_closed?: boolean },
+) {
+  return useApi<ApiResponse<ProjectSummary[]>>(
+    aggregateProjectsUrl(params),
   );
 }

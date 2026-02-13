@@ -447,6 +447,58 @@ export interface ReleasePlan {
   timeline: TimelineEntry[];
 }
 
+// GitHub Projects V2 types
+
+export interface ProjectSummary {
+  number: number;
+  owner: string;
+  title: string;
+  description?: string;
+  url: string;
+  closed: boolean;
+  total_items: number;
+  synced_at: string;
+}
+
+export interface ProjectFieldSummary {
+  name: string;
+  field_type: string;
+  config_json?: unknown;
+}
+
+export interface ProjectDetail extends ProjectSummary {
+  fields: ProjectFieldSummary[];
+}
+
+export interface ProjectItemResponse {
+  node_id: string;
+  content_type: string;
+  content_number?: number;
+  content_title: string;
+  content_state?: string;
+  content_url?: string;
+  content_repository?: string;
+  field_values?: unknown;
+}
+
+export interface StatusCount {
+  status: string;
+  count: number;
+}
+
+export interface ContentTypeCount {
+  content_type: string;
+  count: number;
+}
+
+export interface ProjectMetrics {
+  project_number: number;
+  project_title: string;
+  total_items: number;
+  by_status: StatusCount[];
+  by_content_type: ContentTypeCount[];
+}
+
 // API Response wrappers
 
 export interface ApiResponse<T> {

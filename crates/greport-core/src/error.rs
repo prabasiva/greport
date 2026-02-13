@@ -73,6 +73,27 @@ pub enum Error {
     #[error("Configuration error: {0}")]
     Config(String),
 
+    /// GraphQL API error
+    #[error("GraphQL error: {0}")]
+    GraphQL(String),
+
+    /// Missing required token scope for GitHub Projects
+    #[error(
+        "GitHub token for organization '{org}' lacks the 'read:project' scope. \
+         Update your token at https://github.com/settings/tokens"
+    )]
+    MissingProjectScope {
+        /// Organization name
+        org: String,
+    },
+
+    /// GitHub Projects V2 not available on this instance
+    #[error(
+        "GitHub Projects V2 is not available on this GitHub Enterprise instance. \
+         Requires GHES 3.6 or later."
+    )]
+    ProjectsNotAvailable,
+
     /// Custom error
     #[error("{0}")]
     Custom(String),

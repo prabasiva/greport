@@ -473,10 +473,7 @@ mod tests {
         let client = OctocrabClient::new("ghp_test", None).unwrap();
         let registry = GitHubClientRegistry::with_default(client, None);
 
-        assert_eq!(
-            registry.web_url_for_owner("any-org"),
-            "https://github.com"
-        );
+        assert_eq!(registry.web_url_for_owner("any-org"), "https://github.com");
         assert_eq!(registry.default_web_url(), "https://github.com");
     }
 

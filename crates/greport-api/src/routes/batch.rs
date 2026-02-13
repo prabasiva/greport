@@ -23,6 +23,18 @@ pub struct RepoSyncResult {
     pub warnings: Vec<String>,
 }
 
+/// Result of syncing projects for one organization within a batch
+#[derive(Serialize)]
+pub struct OrgProjectSyncResult {
+    pub organization: String,
+    pub success: bool,
+    pub projects_synced: Option<usize>,
+    pub items_synced: Option<usize>,
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
 /// Result of a batch sync operation
 #[derive(Serialize)]
 pub struct BatchSyncResult {
@@ -30,6 +42,8 @@ pub struct BatchSyncResult {
     pub total_repos: usize,
     pub successful: usize,
     pub failed: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub project_results: Vec<OrgProjectSyncResult>,
     pub synced_at: String,
 }
 
@@ -51,6 +65,7 @@ pub async fn batch_sync(
             total_repos: 0,
             successful: 0,
             failed: 0,
+            project_results: vec![],
             synced_at: Utc::now().to_rfc3339(),
         })));
     }
@@ -137,11 +152,65 @@ pub async fn batch_sync(
         }
     }
 
+    // Sync projects per-organization (deduplicate org names from tracked repos)
+    let mut project_results = Vec::new();
+    let mut seen_orgs = std::collections::HashSet::new();
+    for tracked_repo in &tracked {
+        if let Some(org) = &tracked_repo.org_name {
+            if !seen_orgs.insert(org.clone()) {
+                continue;
+            }
+            let client = match state.client_for_owner(org) {
+                Ok(c) => c,
+                Err(e) => {
+                    project_results.push(OrgProjectSyncResult {
+                        organization: org.clone(),
+                        success: false,
+                        projects_synced: None,
+                        items_synced: None,
+                        error: Some(format!("{e}")),
+                        warnings: vec![],
+                    });
+                    continue;
+                }
+            };
+
+            match sync::sync_projects(pool, client.as_ref(), org).await {
+                Ok(result) => {
+                    project_results.push(OrgProjectSyncResult {
+                        organization: result.organization,
+                        success: true,
+                        projects_synced: Some(result.projects_synced),
+                        items_synced: Some(result.items_synced),
+                        error: None,
+                        warnings: result.warnings,
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        org = %org,
+                        error = ?e,
+                        "Batch project sync failed for org"
+                    );
+                    project_results.push(OrgProjectSyncResult {
+                        organization: org.clone(),
+                        success: false,
+                        projects_synced: None,
+                        items_synced: None,
+                        error: Some(format!("{e}")),
+                        warnings: vec![],
+                    });
+                }
+            }
+        }
+    }
+
     Ok(Json(ApiResponse::ok(BatchSyncResult {
         total_repos: results.len(),
         results,
         successful,
         failed,
+        project_results,
         synced_at: Utc::now().to_rfc3339(),
     })))
 }

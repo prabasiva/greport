@@ -1051,6 +1051,259 @@ pub async fn list_repositories_by_org(
     .await
 }
 
+// =============================================================================
+// Project queries (GitHub Projects V2)
+// =============================================================================
+
+/// Upsert project
+pub async fn upsert_project(pool: &DbPool, input: &ProjectInput) -> sqlx::Result<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO projects (node_id, number, owner, title, description, url, closed,
+                              total_items, created_at, updated_at, synced_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+        ON CONFLICT (node_id) DO UPDATE SET
+            number = EXCLUDED.number,
+            title = EXCLUDED.title,
+            description = EXCLUDED.description,
+            url = EXCLUDED.url,
+            closed = EXCLUDED.closed,
+            total_items = EXCLUDED.total_items,
+            updated_at = EXCLUDED.updated_at,
+            synced_at = NOW()
+        "#,
+    )
+    .bind(&input.node_id)
+    .bind(input.number)
+    .bind(&input.owner)
+    .bind(&input.title)
+    .bind(&input.description)
+    .bind(&input.url)
+    .bind(input.closed)
+    .bind(input.total_items)
+    .bind(input.created_at)
+    .bind(input.updated_at)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// List projects for an organization
+pub async fn list_projects(
+    pool: &DbPool,
+    owner: &str,
+    include_closed: bool,
+) -> sqlx::Result<Vec<ProjectRow>> {
+    if include_closed {
+        sqlx::query_as::<_, ProjectRow>("SELECT * FROM projects WHERE owner = $1 ORDER BY number")
+            .bind(owner)
+            .fetch_all(pool)
+            .await
+    } else {
+        sqlx::query_as::<_, ProjectRow>(
+            "SELECT * FROM projects WHERE owner = $1 AND closed = FALSE ORDER BY number",
+        )
+        .bind(owner)
+        .fetch_all(pool)
+        .await
+    }
+}
+
+/// Get project by owner and number
+pub async fn get_project(
+    pool: &DbPool,
+    owner: &str,
+    number: i64,
+) -> sqlx::Result<Option<ProjectRow>> {
+    sqlx::query_as::<_, ProjectRow>("SELECT * FROM projects WHERE owner = $1 AND number = $2")
+        .bind(owner)
+        .bind(number)
+        .fetch_optional(pool)
+        .await
+}
+
+/// Get project by node ID
+pub async fn get_project_by_node_id(
+    pool: &DbPool,
+    node_id: &str,
+) -> sqlx::Result<Option<ProjectRow>> {
+    sqlx::query_as::<_, ProjectRow>("SELECT * FROM projects WHERE node_id = $1")
+        .bind(node_id)
+        .fetch_optional(pool)
+        .await
+}
+
+/// Delete projects not in the current list (stale cleanup)
+pub async fn delete_stale_projects(
+    pool: &DbPool,
+    owner: &str,
+    current_node_ids: &[String],
+) -> sqlx::Result<u64> {
+    let result = sqlx::query("DELETE FROM projects WHERE owner = $1 AND node_id != ALL($2)")
+        .bind(owner)
+        .bind(current_node_ids)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected())
+}
+
+/// Replace all field definitions for a project (delete + insert)
+pub async fn replace_project_fields(
+    pool: &DbPool,
+    project_id: &str,
+    fields: &[ProjectFieldInput],
+) -> sqlx::Result<()> {
+    sqlx::query("DELETE FROM project_fields WHERE project_id = $1")
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+
+    for field in fields {
+        sqlx::query(
+            r#"
+            INSERT INTO project_fields (node_id, project_id, name, field_type, config_json, synced_at)
+            VALUES ($1, $2, $3, $4, $5, NOW())
+            "#,
+        )
+        .bind(&field.node_id)
+        .bind(&field.project_id)
+        .bind(&field.name)
+        .bind(&field.field_type)
+        .bind(&field.config_json)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
+}
+
+/// List field definitions for a project
+pub async fn list_project_fields(
+    pool: &DbPool,
+    project_id: &str,
+) -> sqlx::Result<Vec<ProjectFieldRow>> {
+    sqlx::query_as::<_, ProjectFieldRow>(
+        "SELECT * FROM project_fields WHERE project_id = $1 ORDER BY name",
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await
+}
+
+/// Replace all items for a project (delete + insert)
+pub async fn replace_project_items(
+    pool: &DbPool,
+    project_id: &str,
+    items: &[ProjectItemInput],
+) -> sqlx::Result<()> {
+    sqlx::query("DELETE FROM project_items WHERE project_id = $1")
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+
+    for item in items {
+        sqlx::query(
+            r#"
+            INSERT INTO project_items (node_id, project_id, content_type, content_number,
+                                       content_title, content_state, content_url,
+                                       content_repository, content_json, field_values_json,
+                                       created_at, updated_at, synced_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+            "#,
+        )
+        .bind(&item.node_id)
+        .bind(&item.project_id)
+        .bind(&item.content_type)
+        .bind(item.content_number)
+        .bind(&item.content_title)
+        .bind(&item.content_state)
+        .bind(&item.content_url)
+        .bind(&item.content_repository)
+        .bind(&item.content_json)
+        .bind(&item.field_values_json)
+        .bind(item.created_at)
+        .bind(item.updated_at)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
+}
+
+/// List items for a project with optional filters
+pub async fn list_project_items(
+    pool: &DbPool,
+    project_id: &str,
+    content_type: Option<&str>,
+    content_state: Option<&str>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> sqlx::Result<Vec<ProjectItemRow>> {
+    let mut query = String::from("SELECT * FROM project_items WHERE project_id = $1");
+    let mut param_count = 1;
+
+    if content_type.is_some() {
+        param_count += 1;
+        query.push_str(&format!(" AND content_type = ${}", param_count));
+    }
+
+    if content_state.is_some() {
+        param_count += 1;
+        query.push_str(&format!(" AND content_state = ${}", param_count));
+    }
+
+    query.push_str(" ORDER BY updated_at DESC");
+
+    if let Some(l) = limit {
+        query.push_str(&format!(" LIMIT {}", l));
+    }
+    if let Some(o) = offset {
+        query.push_str(&format!(" OFFSET {}", o));
+    }
+
+    let mut q = sqlx::query_as::<_, ProjectItemRow>(&query).bind(project_id);
+
+    if let Some(ct) = content_type {
+        q = q.bind(ct);
+    }
+    if let Some(cs) = content_state {
+        q = q.bind(cs);
+    }
+
+    q.fetch_all(pool).await
+}
+
+/// Count project items by status field value
+pub async fn count_project_items_by_status(
+    pool: &DbPool,
+    project_id: &str,
+    status_field_name: &str,
+) -> sqlx::Result<Vec<(String, i64)>> {
+    // Extract status from field_values_json array where field_name matches
+    sqlx::query_as::<_, (String, i64)>(
+        r#"
+        SELECT
+            COALESCE(fv->>'name', 'No Status') as status,
+            COUNT(*) as count
+        FROM project_items pi,
+             LATERAL (
+                SELECT value as fv
+                FROM jsonb_array_elements(pi.field_values_json) as value
+                WHERE value->>'field_name' = $2
+                LIMIT 1
+             ) sub
+        WHERE pi.project_id = $1
+        GROUP BY status
+        ORDER BY count DESC
+        "#,
+    )
+    .bind(project_id)
+    .bind(status_field_name)
+    .fetch_all(pool)
+    .await
+}
+
 /// Check if data needs refresh based on sync time
 pub async fn needs_refresh(
     pool: &DbPool,

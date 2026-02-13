@@ -1,5 +1,6 @@
 //! GitHub API client abstraction
 
+pub mod graphql;
 mod octocrab_client;
 mod params;
 mod registry;
@@ -10,6 +11,7 @@ mod mock_client;
 
 pub use retry::RetryConfig;
 
+pub use graphql::GraphQLClient;
 pub use octocrab_client::OctocrabClient;
 pub use params::*;
 pub use registry::{GitHubClientRegistry, OrgEntry};
@@ -17,7 +19,10 @@ pub use registry::{GitHubClientRegistry, OrgEntry};
 #[cfg(any(test, feature = "mock"))]
 pub use mock_client::{MockData, MockGitHubClient};
 
-use crate::models::{Issue, IssueEvent, Milestone, PullRequest, Release, Repository, Review, User};
+use crate::models::{
+    Issue, IssueEvent, Milestone, Project, ProjectItem, PullRequest, Release, Repository, Review,
+    User,
+};
 use crate::Result;
 use async_trait::async_trait;
 
@@ -124,4 +129,20 @@ pub struct RateLimitInfo {
     pub limit: u32,
     /// Reset time (Unix timestamp)
     pub reset: u64,
+}
+
+/// Trait for GitHub Projects V2 operations (GraphQL-based).
+///
+/// This is separate from `GitHubClient` because Projects V2 uses the GraphQL
+/// API and existing mock implementations should not need to change.
+#[async_trait]
+pub trait ProjectClient: Send + Sync {
+    /// List all projects for an organization.
+    async fn list_projects(&self, org: &str) -> Result<Vec<Project>>;
+
+    /// Get a single project with field definitions.
+    async fn get_project(&self, org: &str, project_number: u64) -> Result<Project>;
+
+    /// List all items in a project.
+    async fn list_project_items(&self, project_node_id: &str) -> Result<Vec<ProjectItem>>;
 }

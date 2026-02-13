@@ -16,6 +16,13 @@ import type {
   ErrorResponse,
   RepoSummary,
   BatchSyncResult,
+  ProjectSummary,
+  ProjectDetail,
+  ProjectItemResponse,
+  ProjectMetrics,
+  ProjectFieldSummary,
+  StatusCount,
+  ContentTypeCount,
 } from "@/types/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9423";
@@ -296,6 +303,44 @@ export function aggregateReleasePlanUrl(
   return `/api/v1/aggregate/release-plan${buildQuery(params || {})}`;
 }
 
+// Projects
+export function projectsUrl(
+  org: string,
+  params?: { include_closed?: boolean },
+): string {
+  const query: Record<string, string | number | undefined> = {};
+  if (params?.include_closed !== undefined) {
+    query.include_closed = params.include_closed ? "true" : "false";
+  }
+  return `/api/v1/orgs/${org}/projects${buildQuery(query)}`;
+}
+
+export function projectDetailUrl(org: string, number: number): string {
+  return `/api/v1/orgs/${org}/projects/${number}`;
+}
+
+export function projectItemsUrl(
+  org: string,
+  number: number,
+  params?: { content_type?: string; state?: string; page?: number; per_page?: number },
+): string {
+  return `/api/v1/orgs/${org}/projects/${number}/items${buildQuery(params || {})}`;
+}
+
+export function projectMetricsUrl(org: string, number: number): string {
+  return `/api/v1/orgs/${org}/projects/${number}/metrics`;
+}
+
+export function aggregateProjectsUrl(
+  params?: { include_closed?: boolean },
+): string {
+  const query: Record<string, string | number | undefined> = {};
+  if (params?.include_closed !== undefined) {
+    query.include_closed = params.include_closed ? "true" : "false";
+  }
+  return `/api/v1/aggregate/projects${buildQuery(query)}`;
+}
+
 // Re-export types for convenience
 export type {
   ApiResponse,
@@ -312,4 +357,11 @@ export type {
   SlaReportResponse,
   ContributorStats,
   SyncResult,
+  ProjectSummary,
+  ProjectDetail,
+  ProjectItemResponse,
+  ProjectMetrics,
+  ProjectFieldSummary,
+  StatusCount,
+  ContentTypeCount,
 };

@@ -273,3 +273,94 @@ pub struct ApiKeyInput {
     pub rate_limit: i32,
     pub expires_at: Option<DateTime<Utc>>,
 }
+
+// =============================================================================
+// Project models (GitHub Projects V2)
+// =============================================================================
+
+/// Project record
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct ProjectRow {
+    pub node_id: String,
+    pub number: i64,
+    pub owner: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub url: String,
+    pub closed: bool,
+    pub total_items: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub synced_at: DateTime<Utc>,
+}
+
+/// Project field definition record
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct ProjectFieldRow {
+    pub node_id: String,
+    pub project_id: String,
+    pub name: String,
+    pub field_type: String,
+    pub config_json: Option<serde_json::Value>,
+    pub synced_at: DateTime<Utc>,
+}
+
+/// Project item record
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct ProjectItemRow {
+    pub node_id: String,
+    pub project_id: String,
+    pub content_type: String,
+    pub content_number: Option<i64>,
+    pub content_title: String,
+    pub content_state: Option<String>,
+    pub content_url: Option<String>,
+    pub content_repository: Option<String>,
+    pub content_json: Option<serde_json::Value>,
+    pub field_values_json: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub synced_at: DateTime<Utc>,
+}
+
+/// Input for creating/updating a project
+#[derive(Debug, Clone)]
+pub struct ProjectInput {
+    pub node_id: String,
+    pub number: i64,
+    pub owner: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub url: String,
+    pub closed: bool,
+    pub total_items: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating/updating a project field
+#[derive(Debug, Clone)]
+pub struct ProjectFieldInput {
+    pub node_id: String,
+    pub project_id: String,
+    pub name: String,
+    pub field_type: String,
+    pub config_json: Option<serde_json::Value>,
+}
+
+/// Input for creating/updating a project item
+#[derive(Debug, Clone)]
+pub struct ProjectItemInput {
+    pub node_id: String,
+    pub project_id: String,
+    pub content_type: String,
+    pub content_number: Option<i64>,
+    pub content_title: String,
+    pub content_state: Option<String>,
+    pub content_url: Option<String>,
+    pub content_repository: Option<String>,
+    pub content_json: Option<serde_json::Value>,
+    pub field_values_json: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
