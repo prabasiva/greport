@@ -41,10 +41,84 @@ query($org: String!, $first: Int!, $after: String) {
 }
 "#;
 
+/// List all projects for a user account (fallback when org query fails).
+const LIST_USER_PROJECTS: &str = r#"
+query($login: String!, $first: Int!, $after: String) {
+  user(login: $login) {
+    projectsV2(first: $first, after: $after, orderBy: {field: UPDATED_AT, direction: DESC}) {
+      nodes {
+        id
+        number
+        title
+        shortDescription
+        url
+        closed
+        createdAt
+        updatedAt
+        items { totalCount }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+"#;
+
 /// Get a single project with field definitions.
 const GET_PROJECT_WITH_FIELDS: &str = r#"
 query($org: String!, $number: Int!) {
   organization(login: $org) {
+    projectV2(number: $number) {
+      id
+      number
+      title
+      shortDescription
+      url
+      closed
+      createdAt
+      updatedAt
+      items { totalCount }
+      fields(first: 30) {
+        nodes {
+          ... on ProjectV2FieldCommon {
+            id
+            name
+            dataType
+          }
+          ... on ProjectV2SingleSelectField {
+            id
+            name
+            dataType
+            options {
+              id
+              name
+              color
+              description
+            }
+          }
+          ... on ProjectV2IterationField {
+            id
+            name
+            dataType
+            configuration {
+              iterations {
+                id
+                title
+                startDate
+                duration
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"#;
+
+/// Get a single project with field definitions for a user account.
+const GET_USER_PROJECT_WITH_FIELDS: &str = r#"
+query($login: String!, $number: Int!) {
+  user(login: $login) {
     projectV2(number: $number) {
       id
       number
@@ -273,10 +347,20 @@ impl GraphQLClient {
             )));
         }
 
-        let gql_response: GraphQLResponse<T> = response
-            .json()
+        let body_text = response
+            .text()
             .await
-            .map_err(|e| Error::GraphQL(format!("Failed to parse GraphQL response: {}", e)))?;
+            .map_err(|e| Error::GraphQL(format!("Failed to read GraphQL response body: {}", e)))?;
+
+        debug!(body_len = body_text.len(), "GraphQL response received");
+
+        let gql_response: GraphQLResponse<T> = serde_json::from_str(&body_text)
+            .map_err(|e| {
+                // Log a truncated snippet of the body for debugging
+                let snippet: String = body_text.chars().take(500).collect();
+                warn!(error = %e, body_snippet = %snippet, "Failed to parse GraphQL response");
+                Error::GraphQL(format!("Failed to parse GraphQL response: {}", e))
+            })?;
 
         if let Some(errors) = gql_response.errors {
             if !errors.is_empty() {
@@ -293,23 +377,71 @@ impl GraphQLClient {
     // High-level project operations
     // -----------------------------------------------------------------------
 
-    /// List all projects for an organization.
+    /// List all projects for an organization or user.
+    ///
+    /// Tries the organization query first. If the login is not an org
+    /// (returns NotFound), falls back to the user-level projects query.
     pub async fn list_org_projects(&self, org: &str) -> Result<Vec<Project>> {
+        match self.list_projects_as_org(org).await {
+            Ok(projects) => Ok(projects),
+            Err(Error::NotFound(_)) => {
+                debug!(login = org, "Not an organization, trying user projects query");
+                self.list_projects_as_user(org).await
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// List projects using the organization GraphQL query.
+    async fn list_projects_as_org(&self, org: &str) -> Result<Vec<Project>> {
+        self.list_projects_paginated(LIST_ORG_PROJECTS, "org", org, |d: OrgProjectsData| {
+            d.organization
+        })
+        .await
+    }
+
+    /// List projects using the user GraphQL query (fallback).
+    async fn list_projects_as_user(&self, login: &str) -> Result<Vec<Project>> {
+        self.list_projects_paginated(LIST_USER_PROJECTS, "login", login, |d: UserProjectsData| {
+            d.user
+        })
+        .await
+    }
+
+    /// Shared pagination loop for listing projects.
+    async fn list_projects_paginated<T: DeserializeOwned>(
+        &self,
+        query_str: &str,
+        var_name: &str,
+        login: &str,
+        extract: impl Fn(T) -> Option<OrgProjectsOrg>,
+    ) -> Result<Vec<Project>> {
         let mut all_projects = Vec::new();
         let mut cursor: Option<String> = None;
 
         loop {
             let variables = serde_json::json!({
-                "org": org,
+                var_name: login,
                 "first": 100,
                 "after": cursor,
             });
 
-            let data: OrgProjectsData = self.query(LIST_ORG_PROJECTS, variables).await?;
-            let connection = data.organization.projects_v2;
+            let data: T = self.query(query_str, variables).await?;
+            let owner_data = match extract(data) {
+                Some(d) => d,
+                None => {
+                    debug!(login = login, "Owner returned null, returning empty projects list");
+                    return Ok(Vec::new());
+                }
+            };
+            let connection = owner_data.projects_v2;
+            let null_count = connection.nodes.iter().filter(|n| n.is_none()).count();
+            if null_count > 0 {
+                warn!(login = login, null_count = null_count, "Some projects not accessible (token may need read:project scope)");
+            }
 
-            for node in connection.nodes {
-                all_projects.push(convert_project_summary(node, org));
+            for node in connection.nodes.into_iter().flatten() {
+                all_projects.push(convert_project_summary(node, login));
             }
 
             if connection.page_info.has_next_page {
@@ -319,25 +451,41 @@ impl GraphQLClient {
             }
         }
 
-        debug!(org = org, count = all_projects.len(), "Fetched projects");
+        debug!(login = login, count = all_projects.len(), "Fetched projects");
         Ok(all_projects)
     }
 
     /// Get a single project with field definitions.
+    ///
+    /// Tries the organization query first, falls back to user query.
     pub async fn get_project_detail(
         &self,
         org: &str,
         project_number: u64,
     ) -> Result<Project> {
-        let variables = serde_json::json!({
-            "org": org,
-            "number": project_number as i64,
-        });
-
-        let data: OrgProjectDetailData = self.query(GET_PROJECT_WITH_FIELDS, variables).await?;
-        let gql_project = data.organization.project_v2.ok_or_else(|| {
-            Error::NotFound(format!("Project #{} not found in org '{}'", project_number, org))
-        })?;
+        let gql_project = match self.get_project_detail_inner(
+            GET_PROJECT_WITH_FIELDS,
+            "org",
+            org,
+            project_number,
+            |d: OrgProjectDetailData| d.organization,
+        )
+        .await
+        {
+            Ok(p) => p,
+            Err(Error::NotFound(_)) => {
+                debug!(login = org, number = project_number, "Not an organization, trying user project query");
+                self.get_project_detail_inner(
+                    GET_USER_PROJECT_WITH_FIELDS,
+                    "login",
+                    org,
+                    project_number,
+                    |d: UserProjectDetailData| d.user,
+                )
+                .await?
+            }
+            Err(e) => return Err(e),
+        };
 
         let fields = gql_project
             .fields
@@ -364,6 +512,29 @@ impl GraphQLClient {
         Ok(project)
     }
 
+    /// Inner helper: fetch project detail using a specific query (org or user).
+    async fn get_project_detail_inner<T: DeserializeOwned>(
+        &self,
+        query_str: &str,
+        var_name: &str,
+        login: &str,
+        project_number: u64,
+        extract: impl Fn(T) -> Option<OrgProjectDetailOrg>,
+    ) -> Result<GqlProjectDetail> {
+        let variables = serde_json::json!({
+            var_name: login,
+            "number": project_number as i64,
+        });
+
+        let data: T = self.query(query_str, variables).await?;
+        let owner_data = extract(data).ok_or_else(|| {
+            Error::NotFound(format!("'{}' not found or not accessible", login))
+        })?;
+        owner_data.project_v2.ok_or_else(|| {
+            Error::NotFound(format!("Project #{} not found for '{}'", project_number, login))
+        })
+    }
+
     /// List all items in a project (handles pagination).
     pub async fn list_items(&self, project_node_id: &str) -> Result<Vec<ProjectItem>> {
         let mut all_items = Vec::new();
@@ -383,7 +554,7 @@ impl GraphQLClient {
 
             let connection = project_data.items;
 
-            for node in connection.nodes {
+            for node in connection.nodes.into_iter().flatten() {
                 if let Some(item) = convert_item(node) {
                     all_items.push(item);
                 }
@@ -455,7 +626,7 @@ struct PageInfo {
 
 #[derive(Deserialize)]
 struct Connection<T> {
-    nodes: Vec<T>,
+    nodes: Vec<Option<T>>,
     #[serde(rename = "pageInfo")]
     page_info: PageInfo,
 }
@@ -470,7 +641,7 @@ struct TotalCount {
 
 #[derive(Deserialize)]
 struct OrgProjectsData {
-    organization: OrgProjectsOrg,
+    organization: Option<OrgProjectsOrg>,
 }
 
 #[derive(Deserialize)]
@@ -495,11 +666,23 @@ struct GqlProject {
     items: Option<TotalCount>,
 }
 
+// -- List projects response (user fallback) --
+
+#[derive(Deserialize)]
+struct UserProjectsData {
+    user: Option<OrgProjectsOrg>,
+}
+
 // -- Get project detail response --
 
 #[derive(Deserialize)]
 struct OrgProjectDetailData {
-    organization: OrgProjectDetailOrg,
+    organization: Option<OrgProjectDetailOrg>,
+}
+
+#[derive(Deserialize)]
+struct UserProjectDetailData {
+    user: Option<OrgProjectDetailOrg>,
 }
 
 #[derive(Deserialize)]
@@ -962,7 +1145,7 @@ mod tests {
 
         let resp: GraphQLResponse<OrgProjectsData> = serde_json::from_str(json).unwrap();
         let data = resp.data.unwrap();
-        let nodes = &data.organization.projects_v2.nodes;
+        let nodes: Vec<GqlProject> = data.organization.unwrap().projects_v2.nodes.into_iter().flatten().collect();
 
         assert_eq!(nodes.len(), 2);
         assert_eq!(nodes[0].number, 5);
@@ -1036,7 +1219,7 @@ mod tests {
 
         let resp: GraphQLResponse<OrgProjectDetailData> = serde_json::from_str(json).unwrap();
         let data = resp.data.unwrap();
-        let project = data.organization.project_v2.unwrap();
+        let project = data.organization.unwrap().project_v2.unwrap();
         let fields: Vec<ProjectField> = project
             .fields
             .as_ref()
@@ -1167,6 +1350,7 @@ mod tests {
         let items: Vec<ProjectItem> = items_conn
             .nodes
             .into_iter()
+            .flatten()
             .filter_map(convert_item)
             .collect();
 
